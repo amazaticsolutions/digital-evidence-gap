@@ -1,0 +1,433 @@
+"""
+Search/Case views for case management API.
+
+API Endpoints:
+    POST   /api/search/cases/                    - Create a new case
+    GET    /api/search/cases/                    - Get all cases for current user
+    GET    /api/search/cases/{id}/               - Get case details with evidence
+    PATCH  /api/search/cases/{id}/               - Update case
+    DELETE /api/search/cases/{id}/               - Delete case
+    POST   /api/search/cases/{id}/evidence/      - Add evidence to case
+    DELETE /api/search/cases/{id}/evidence/{eid}/ - Remove evidence from case
+    POST   /api/search/cases/{id}/assign/        - Assign case to user
+"""
+
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+from .serializers import (
+    CreateCaseSerializer,
+    CaseResponseSerializer,
+    CaseListSerializer,
+    CaseDetailSerializer,
+    UpdateCaseSerializer,
+    AddEvidenceSerializer,
+    AssignCaseSerializer,
+)
+from . import services
+
+
+class CaseListCreateView(APIView):
+    """
+    List all cases for current user or create a new case.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get all cases for the current user",
+        manual_parameters=[
+            openapi.Parameter(
+                'status',
+                openapi.IN_QUERY,
+                description="Filter by status (active, completed, archived, pending)",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'skip',
+                openapi.IN_QUERY,
+                description="Number of records to skip (pagination)",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+            openapi.Parameter(
+                'limit',
+                openapi.IN_QUERY,
+                description="Maximum number of records to return",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+        ],
+        responses={
+            200: CaseListSerializer,
+            401: 'Not authenticated',
+        },
+        tags=['Cases']
+    )
+    def get(self, request):
+        """Get all cases for the current user."""
+        status_filter = request.query_params.get('status')
+        skip = int(request.query_params.get('skip', 0))
+        limit = int(request.query_params.get('limit', 50))
+        
+        cases, total, error = services.get_user_cases(
+            user_id=request.user.id,
+            status_filter=status_filter,
+            skip=skip,
+            limit=limit
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response({
+            "cases": cases,
+            "total": total
+        }, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_description="Create a new case",
+        request_body=CreateCaseSerializer,
+        responses={
+            201: CaseResponseSerializer,
+            400: 'Validation error',
+            401: 'Not authenticated',
+        },
+        tags=['Cases']
+    )
+    def post(self, request):
+        """Create a new case."""
+        serializer = CreateCaseSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        case, error = services.create_case(
+            user_id=request.user.id,
+            title=serializer.validated_data['title'],
+            description=serializer.validated_data.get('description'),
+            evidence_ids=serializer.validated_data.get('evidence_ids', [])
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(case, status=status.HTTP_201_CREATED)
+
+
+class CaseDetailView(APIView):
+    """
+    Get, update, or delete a specific case.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get case details with evidence",
+        responses={
+            200: CaseDetailSerializer,
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def get(self, request, case_id):
+        """Get case details with evidence."""
+        case, error = services.get_case_with_evidence(case_id)
+        
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Check ownership
+        if case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to view this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return Response(case, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_description="Update a case",
+        request_body=UpdateCaseSerializer,
+        responses={
+            200: CaseResponseSerializer,
+            400: 'Validation error',
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def patch(self, request, case_id):
+        """Update a case."""
+        serializer = UpdateCaseSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check ownership first
+        existing_case, error = services.get_case_by_id(case_id)
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        if existing_case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to update this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        case, error = services.update_case(
+            case_id=case_id,
+            title=serializer.validated_data.get('title'),
+            description=serializer.validated_data.get('description'),
+            status=serializer.validated_data.get('status')
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(case, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(
+        operation_description="Delete a case",
+        responses={
+            204: 'Case deleted successfully',
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def delete(self, request, case_id):
+        """Delete a case."""
+        # Check ownership first
+        existing_case, error = services.get_case_by_id(case_id)
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        if existing_case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to delete this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        success, error = services.delete_case(case_id)
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CaseEvidenceView(APIView):
+    """
+    Add or remove evidence from a case.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Add evidence to a case",
+        request_body=AddEvidenceSerializer,
+        responses={
+            200: CaseResponseSerializer,
+            400: 'Validation error',
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def post(self, request, case_id):
+        """Add evidence to a case."""
+        serializer = AddEvidenceSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check ownership
+        existing_case, error = services.get_case_by_id(case_id)
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        if existing_case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to modify this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        case, error = services.add_evidence_to_case(
+            case_id=case_id,
+            evidence_id=serializer.validated_data['evidence_id']
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(case, status=status.HTTP_200_OK)
+
+
+class CaseEvidenceDeleteView(APIView):
+    """
+    Remove evidence from a case.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Remove evidence from a case",
+        responses={
+            200: CaseResponseSerializer,
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def delete(self, request, case_id, evidence_id):
+        """Remove evidence from a case."""
+        # Check ownership
+        existing_case, error = services.get_case_by_id(case_id)
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        if existing_case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to modify this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        case, error = services.remove_evidence_from_case(
+            case_id=case_id,
+            evidence_id=evidence_id
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(case, status=status.HTTP_200_OK)
+
+
+class CaseAssignView(APIView):
+    """
+    Assign a case to a user.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Assign a case to a user",
+        request_body=AssignCaseSerializer,
+        responses={
+            200: CaseResponseSerializer,
+            400: 'Validation error',
+            401: 'Not authenticated',
+            404: 'Case not found',
+        },
+        tags=['Cases']
+    )
+    def post(self, request, case_id):
+        """Assign a case to a user."""
+        serializer = AssignCaseSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check ownership
+        existing_case, error = services.get_case_by_id(case_id)
+        if error:
+            if "not found" in error.lower():
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        if existing_case['user_id'] != request.user.id:
+            return Response(
+                {"error": "You don't have permission to assign this case"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        case, error = services.assign_case_to_user(
+            case_id=case_id,
+            assigned_to_user_id=serializer.validated_data['user_id']
+        )
+        
+        if error:
+            return Response(
+                {"error": error},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        return Response(case, status=status.HTTP_200_OK)

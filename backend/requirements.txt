@@ -94,7 +94,7 @@ torch==2.2.1                         # PyTorch for ML operations
 torchvision==0.17.1                  # Vision utilities for torchreid
 
 # Person Re-Identification
-torchreid==1.4.0                     # Cross-camera person re-identification
+torchreid==0.2.5                     # Cross-camera person re-identification
 gdown==5.1.0                         # Required for torchreid model downloads
 
 # LLM and Vision Model - Ollama

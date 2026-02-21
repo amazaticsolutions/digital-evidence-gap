@@ -3,7 +3,8 @@ Evidence services for video upload and processing.
 
 This module provides business logic for:
 - Uploading videos to local storage
-- Uploading videos to Google Drive (via user OAuth)
+- Uploading videos/images to Google Drive (via user OAuth)
+- Batch upload for multiple files
 - Managing video evidence records
 - Triggering RAG pipeline processing
 """
@@ -13,14 +14,14 @@ import uuid
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple, BinaryIO
+from typing import Optional, Dict, Any, Tuple, BinaryIO, List
 
 from django.conf import settings
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from bson import ObjectId
 
-from .models import VideoEvidence, ProcessingJob
+from .models import VideoEvidence, MediaEvidence, ProcessingJob
 
 
 # =============================================================================
@@ -31,8 +32,8 @@ from .models import VideoEvidence, ProcessingJob
 UPLOAD_DIR = Path(settings.BASE_DIR) / "uploads" / "videos"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Allowed video MIME types
-ALLOWED_MIME_TYPES = {
+# Allowed MIME types
+ALLOWED_VIDEO_MIME_TYPES = {
     'video/mp4',
     'video/avi',
     'video/mov',
@@ -41,6 +42,16 @@ ALLOWED_MIME_TYPES = {
     'video/webm',
     'video/x-matroska',
 }
+
+ALLOWED_IMAGE_MIME_TYPES = {
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+}
+
+ALLOWED_MIME_TYPES = ALLOWED_VIDEO_MIME_TYPES | ALLOWED_IMAGE_MIME_TYPES
 
 # Max file size (500MB)
 MAX_FILE_SIZE = 500 * 1024 * 1024
@@ -52,16 +63,14 @@ MAX_FILE_SIZE = 500 * 1024 * 1024
 
 def _get_db():
     """Get MongoDB database connection."""
-    mongo_uri = os.getenv("MONGO_INITDB_DATABASE", "")
-    if not mongo_uri:
-        raise ValueError("MONGO_INITDB_DATABASE not configured")
-    
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    db_name = os.getenv("MONGO_DB_NAME", "digital_evidence_gap")
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-    return client["evidence_db"]
+    return client[db_name]
 
 
 # =============================================================================
-# Video Upload Services
+# Media Upload Services
 # =============================================================================
 
 def validate_video_file(file) -> Tuple[bool, str]:
@@ -80,10 +89,19 @@ def validate_video_file(file) -> Tuple[bool, str]:
     
     # Check MIME type
     content_type = file.content_type
-    if content_type not in ALLOWED_MIME_TYPES:
+    if content_type not in ALLOWED_VIDEO_MIME_TYPES:
         return False, f"Invalid file type: {content_type}. Allowed types: mp4, avi, mov, webm, mkv"
     
     return True, ""
+
+
+def get_media_type_from_mime(mime_type: str) -> str:
+    """Get media type (video/image) from MIME type."""
+    if mime_type in ALLOWED_VIDEO_MIME_TYPES:
+        return MediaEvidence.MEDIA_VIDEO
+    elif mime_type in ALLOWED_IMAGE_MIME_TYPES:
+        return MediaEvidence.MEDIA_IMAGE
+    return MediaEvidence.MEDIA_VIDEO  # Default
 
 
 def get_video_duration(file_path: str) -> Optional[float]:
@@ -290,6 +308,159 @@ def upload_video_gdrive_link(
         "gdrive_file_id": file_id,
         "gdrive_url": gdrive_view_url,
         "status": VideoEvidence.STATUS_PENDING
+    }
+
+
+def upload_gdrive_batch(
+    files: List[Dict[str, Any]],
+    cam_id: str,
+    uploaded_by_user_id: int,
+    gps_lat: float = 0.0,
+    gps_lng: float = 0.0,
+    case_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Register multiple Google Drive files (videos/images) for processing.
+    
+    This handles batch upload of multiple files from Google Drive,
+    storing their file paths and metadata in the database.
+    
+    Args:
+        files: List of dicts with file info:
+            - gdrive_file_id: Google Drive file ID (required)
+            - gdrive_url: Google Drive URL (optional)
+            - filename: Original filename (optional)
+            - gdrive_folder_path: Folder path in Drive (optional)
+            - gdrive_folder_id: Folder ID in Drive (optional)
+            - media_type: 'video' or 'image' (optional)
+            - file_size: File size in bytes (optional)
+            - mime_type: MIME type (optional)
+        cam_id: Camera identifier
+        uploaded_by_user_id: ID of the user uploading
+        gps_lat: GPS latitude
+        gps_lng: GPS longitude
+        case_id: Associated case ID
+        metadata: Additional metadata
+    
+    Returns:
+        Dict containing batch upload results
+    """
+    # Generate batch ID for grouping
+    batch_id = f"BATCH-{uuid.uuid4().hex[:12].upper()}"
+    
+    results = []
+    successful = 0
+    failed = 0
+    evidence_ids = []
+    
+    db = _get_db()
+    collection = db[MediaEvidence.COLLECTION_NAME]
+    
+    for file_info in files:
+        try:
+            gdrive_file_id = file_info.get('gdrive_file_id')
+            if not gdrive_file_id:
+                results.append({
+                    "success": False,
+                    "evidence_id": None,
+                    "filename": file_info.get('filename', 'unknown'),
+                    "gdrive_file_id": None,
+                    "gdrive_url": None,
+                    "gdrive_folder_path": None,
+                    "media_type": file_info.get('media_type', 'video'),
+                    "file_size": 0,
+                    "error": "Missing gdrive_file_id"
+                })
+                failed += 1
+                continue
+            
+            # Get or construct file info
+            filename = file_info.get('filename') or f"gdrive_{gdrive_file_id}"
+            gdrive_url = file_info.get('gdrive_url') or f"https://drive.google.com/file/d/{gdrive_file_id}/view"
+            gdrive_folder_path = file_info.get('gdrive_folder_path') or ""
+            gdrive_folder_id = file_info.get('gdrive_folder_id') or ""
+            file_size = file_info.get('file_size', 0)
+            mime_type = file_info.get('mime_type', '')
+            media_type = file_info.get('media_type') or get_media_type_from_mime(mime_type)
+            
+            # Create document
+            doc = MediaEvidence.create_document(
+                filename=filename,
+                cam_id=cam_id,
+                file_size=file_size,
+                storage_type=MediaEvidence.STORAGE_GDRIVE,
+                uploaded_by_user_id=uploaded_by_user_id,
+                media_type=media_type,
+                mime_type=mime_type,
+                gdrive_file_id=gdrive_file_id,
+                gdrive_url=gdrive_url,
+                gdrive_folder_id=gdrive_folder_id,
+                gdrive_folder_path=gdrive_folder_path,
+                gps_lat=gps_lat,
+                gps_lng=gps_lng,
+                case_id=case_id,
+                batch_id=batch_id,
+                metadata=metadata
+            )
+            
+            # Insert into MongoDB
+            result = collection.insert_one(doc)
+            evidence_id = str(result.inserted_id)
+            evidence_ids.append(evidence_id)
+            
+            results.append({
+                "success": True,
+                "evidence_id": evidence_id,
+                "filename": filename,
+                "gdrive_file_id": gdrive_file_id,
+                "gdrive_url": gdrive_url,
+                "gdrive_folder_path": gdrive_folder_path,
+                "media_type": media_type,
+                "file_size": file_size,
+                "error": None
+            })
+            successful += 1
+            
+        except Exception as e:
+            results.append({
+                "success": False,
+                "evidence_id": None,
+                "filename": file_info.get('filename', 'unknown'),
+                "gdrive_file_id": file_info.get('gdrive_file_id'),
+                "gdrive_url": file_info.get('gdrive_url'),
+                "gdrive_folder_path": file_info.get('gdrive_folder_path'),
+                "media_type": file_info.get('media_type', 'video'),
+                "file_size": file_info.get('file_size', 0),
+                "error": str(e)
+            })
+            failed += 1
+    
+    # If case_id provided, add evidence to case
+    if case_id and evidence_ids:
+        try:
+            from search.models import Search
+            case_collection = db[Search.COLLECTION_NAME]
+            case_collection.update_one(
+                {"_id": ObjectId(case_id)},
+                {
+                    "$addToSet": {"evidence_ids": {"$each": evidence_ids}},
+                    "$inc": {"evidence_count": len(evidence_ids)},
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
+            )
+        except Exception:
+            pass  # Don't fail if case update fails
+    
+    return {
+        "success": failed == 0,
+        "batch_id": batch_id,
+        "total_files": len(files),
+        "successful": successful,
+        "failed": failed,
+        "case_id": case_id,
+        "evidence_ids": evidence_ids,
+        "results": results
     }
 
 

@@ -35,6 +35,7 @@ vite.config.ts.timestamp-*
 .env.production
 .env.staging
 .env.test
+protean-genius-470217-p0-0f13606c27f8.json
 
 # =============================
 # Editor & IDE
@@ -180,9 +181,11 @@ dmypy.json
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-<<<<<<< HEAD
 Thumbs.db
 desktop.ini
+
+#other folder
+frontnend
 
 # =============================
 # Logs
@@ -216,7 +219,6 @@ coverage/
 # =============================
 *.pem
 .qodo/
-=======
 Thumbnails.db
 
 # Project specific
@@ -226,4 +228,4 @@ media/
 service-account-key.json
 *.key
 *.pem
->>>>>>> 2b3bf8d (Initial backend project setup.)
+

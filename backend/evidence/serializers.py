@@ -4,6 +4,7 @@ Evidence serializers for video upload and management API.
 This module defines request/response serializers for:
 - Video file uploads (local storage)
 - Google Drive link registration
+- Batch uploads for multiple files
 - Video listing and details
 - Processing job management
 """
@@ -89,6 +90,121 @@ class GDriveLinkSerializer(serializers.Serializer):
     )
 
 
+class GDriveFileItemSerializer(serializers.Serializer):
+    """
+    Serializer for a single Google Drive file in batch upload.
+    """
+    gdrive_file_id = serializers.CharField(
+        required=True,
+        help_text="Google Drive file ID"
+    )
+    gdrive_url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Google Drive URL (optional, will be constructed from file ID)"
+    )
+    filename = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Original filename (optional)"
+    )
+    gdrive_folder_path = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Folder path in Google Drive"
+    )
+    gdrive_folder_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Google Drive folder ID"
+    )
+    media_type = serializers.ChoiceField(
+        choices=['video', 'image'],
+        required=False,
+        default='video',
+        help_text="Type of media (video or image)"
+    )
+    file_size = serializers.IntegerField(
+        required=False,
+        default=0,
+        help_text="File size in bytes"
+    )
+    mime_type = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="MIME type of the file"
+    )
+
+
+class GDriveBatchUploadSerializer(serializers.Serializer):
+    """
+    Serializer for batch Google Drive file registration.
+    
+    Request fields:
+        files: List of Google Drive files to register
+        cam_id: Camera identifier (required)
+        gps_lat: GPS latitude (default: 0.0)
+        gps_lng: GPS longitude (default: 0.0)
+        case_id: Associated case ID (optional)
+    """
+    files = serializers.ListField(
+        child=GDriveFileItemSerializer(),
+        required=True,
+        min_length=1,
+        help_text="List of Google Drive files to register"
+    )
+    cam_id = serializers.CharField(
+        required=True,
+        max_length=100,
+        help_text="Camera identifier"
+    )
+    gps_lat = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS latitude of camera location"
+    )
+    gps_lng = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS longitude of camera location"
+    )
+    case_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=100,
+        help_text="Associated case ID"
+    )
+
+
+class BatchUploadResponseItemSerializer(serializers.Serializer):
+    """
+    Serializer for a single item in batch upload response.
+    """
+    success = serializers.BooleanField()
+    evidence_id = serializers.CharField(required=False, allow_null=True)
+    filename = serializers.CharField()
+    gdrive_file_id = serializers.CharField()
+    gdrive_url = serializers.CharField(required=False, allow_null=True)
+    gdrive_folder_path = serializers.CharField(required=False, allow_null=True)
+    media_type = serializers.CharField()
+    file_size = serializers.IntegerField()
+    error = serializers.CharField(required=False, allow_null=True)
+
+
+class BatchUploadResponseSerializer(serializers.Serializer):
+    """
+    Serializer for batch upload response.
+    """
+    success = serializers.BooleanField()
+    batch_id = serializers.CharField()
+    total_files = serializers.IntegerField()
+    successful = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    case_id = serializers.CharField(allow_null=True)
+    results = BatchUploadResponseItemSerializer(many=True)
+
+
 class VideoResponseSerializer(serializers.Serializer):
     """
     Serializer for video upload response.
@@ -98,21 +214,26 @@ class VideoResponseSerializer(serializers.Serializer):
     filename = serializers.CharField()
     file_size = serializers.IntegerField()
     duration = serializers.FloatField(allow_null=True)
+    media_type = serializers.CharField(required=False, default='video')
     storage_type = serializers.CharField()
     local_path = serializers.CharField(required=False, allow_null=True)
     gdrive_file_id = serializers.CharField(required=False, allow_null=True)
     gdrive_url = serializers.CharField(required=False, allow_null=True)
+    gdrive_folder_path = serializers.CharField(required=False, allow_null=True)
     status = serializers.CharField()
 
 
-class VideoDetailSerializer(serializers.Serializer):
+class MediaDetailSerializer(serializers.Serializer):
     """
-    Serializer for video evidence details.
+    Serializer for media evidence details (video or image).
     """
-    _id = serializers.CharField(source='id')
+    id = serializers.CharField()
     filename = serializers.CharField()
+    media_type = serializers.CharField()
+    mime_type = serializers.CharField(allow_null=True)
     cam_id = serializers.CharField()
     case_id = serializers.CharField(allow_null=True)
+    uploaded_by_user_id = serializers.IntegerField(allow_null=True)
     upload_date = serializers.DateTimeField()
     file_size = serializers.IntegerField()
     duration = serializers.FloatField(allow_null=True)
@@ -120,11 +241,41 @@ class VideoDetailSerializer(serializers.Serializer):
     local_path = serializers.CharField(allow_null=True)
     gdrive_file_id = serializers.CharField(allow_null=True)
     gdrive_url = serializers.CharField(allow_null=True)
+    gdrive_folder_id = serializers.CharField(allow_null=True)
+    gdrive_folder_path = serializers.CharField(allow_null=True)
     gps_lat = serializers.FloatField()
     gps_lng = serializers.FloatField()
     status = serializers.CharField()
     frames_processed = serializers.IntegerField()
     error_message = serializers.CharField(allow_null=True)
+    batch_id = serializers.CharField(allow_null=True)
+
+
+class VideoDetailSerializer(serializers.Serializer):
+    """
+    Serializer for video evidence details.
+    """
+    id = serializers.CharField()
+    filename = serializers.CharField()
+    media_type = serializers.CharField(required=False, default='video')
+    cam_id = serializers.CharField()
+    case_id = serializers.CharField(allow_null=True)
+    uploaded_by_user_id = serializers.IntegerField(allow_null=True)
+    upload_date = serializers.DateTimeField()
+    file_size = serializers.IntegerField()
+    duration = serializers.FloatField(allow_null=True)
+    storage_type = serializers.CharField()
+    local_path = serializers.CharField(allow_null=True)
+    gdrive_file_id = serializers.CharField(allow_null=True)
+    gdrive_url = serializers.CharField(allow_null=True)
+    gdrive_folder_id = serializers.CharField(allow_null=True)
+    gdrive_folder_path = serializers.CharField(allow_null=True)
+    gps_lat = serializers.FloatField()
+    gps_lng = serializers.FloatField()
+    status = serializers.CharField()
+    frames_processed = serializers.IntegerField()
+    error_message = serializers.CharField(allow_null=True)
+    batch_id = serializers.CharField(allow_null=True)
 
 
 class VideoListSerializer(serializers.Serializer):

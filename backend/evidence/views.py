@@ -4,6 +4,7 @@ Evidence views for video upload and management API.
 API Endpoints:
     POST   /api/evidence/upload/         - Upload video file (local storage)
     POST   /api/evidence/gdrive/         - Register Google Drive video link
+    POST   /api/evidence/gdrive/batch/   - Register multiple Google Drive files
     GET    /api/evidence/videos/         - List all videos
     GET    /api/evidence/videos/{id}/    - Get video details
     DELETE /api/evidence/videos/{id}/    - Delete video
@@ -15,13 +16,15 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import AllowAny  # Change to IsAuthenticated in production
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 from .serializers import (
     VideoUploadSerializer,
     GDriveLinkSerializer,
+    GDriveBatchUploadSerializer,
+    BatchUploadResponseSerializer,
     VideoResponseSerializer,
     VideoDetailSerializer,
     VideoListSerializer,
@@ -168,6 +171,60 @@ class GDriveLinkView(APIView):
         except Exception as e:
             return Response(
                 {"error": "Registration failed", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GDriveBatchUploadView(APIView):
+    """
+    Register multiple Google Drive files (videos/images) for processing.
+    
+    This endpoint accepts a list of Google Drive file information
+    and creates database records for each file with their paths.
+    """
+    parser_classes = [JSONParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Register multiple Google Drive files (videos/images)",
+        request_body=GDriveBatchUploadSerializer,
+        responses={
+            201: BatchUploadResponseSerializer,
+            400: 'Validation error',
+            401: 'Not authenticated',
+            500: 'Server error'
+        },
+        tags=['Evidence']
+    )
+    def post(self, request):
+        """Register multiple Google Drive files."""
+        serializer = GDriveBatchUploadSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            result = services.upload_gdrive_batch(
+                files=serializer.validated_data['files'],
+                cam_id=serializer.validated_data['cam_id'],
+                uploaded_by_user_id=request.user.id,
+                gps_lat=serializer.validated_data.get('gps_lat', 0.0),
+                gps_lng=serializer.validated_data.get('gps_lng', 0.0),
+                case_id=serializer.validated_data.get('case_id')
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+            
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": "Batch upload failed", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
