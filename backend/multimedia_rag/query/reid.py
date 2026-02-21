@@ -391,8 +391,8 @@ def get_person_track(person_id: str) -> Optional[Dict[str, Any]]:
         Dict containing person_id and list of appearances,
         or None if person not found.
     """
-    from ingestion.mongo_store import get_collection
-    
+    from multimedia_rag.ingestion.mongo_store import get_collection
+
     tracks_col = get_collection(config.COLLECTION_REID_TRACKS)
     return tracks_col.find_one({"person_id": person_id})
 
@@ -404,5 +404,5 @@ def get_all_person_tracks() -> List[Dict[str, Any]]:
     Returns:
         List of all track documents.
     """
-    from ingestion.mongo_store import get_reid_tracks
+    from multimedia_rag.ingestion.mongo_store import get_reid_tracks
     return get_reid_tracks()
