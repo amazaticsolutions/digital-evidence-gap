@@ -4,16 +4,16 @@ Ingestion package for the Multimedia RAG Engine.
 This package provides the complete video ingestion pipeline, including:
 - Downloading videos from Google Drive
 - Extracting frames using ffmpeg and OpenCV
-- Generating captions using LLaVA vision model
-- Creating embeddings using Sentence Transformers
-- Storing data in MongoDB Atlas
+- Generating three-level captions using Microsoft Florence-2
+- Creating three 384-dim embeddings (brief / detailed / regional)
+- Storing frames in MongoDB Atlas (frame_embeddings + frame_metadata)
 
 Main function:
     ingest_video: Complete ingestion pipeline for a single video file
 
 Sub-modules:
     frame_extractor: Video frame extraction
-    captioner: Frame captioning with LLaVA
+    captioner: Frame captioning with Florence-2
     embedder: Text embedding with Sentence Transformers
     mongo_store: MongoDB storage operations
 """
@@ -24,7 +24,7 @@ from typing import Optional
 from multimedia_rag.drive.gdrive import download_video_from_drive, delete_temp_video
 from multimedia_rag.ingestion.frame_extractor import extract_frames
 from multimedia_rag.ingestion.captioner import generate_caption
-from multimedia_rag.ingestion.embedder import generate_embedding
+from multimedia_rag.ingestion.embedder import generate_embedding, generate_embeddings_for_captions
 from multimedia_rag.ingestion.mongo_store import store_frame, check_frame_exists
 
 
@@ -33,7 +33,8 @@ def ingest_video(
     cam_id: str,
     gps_lat: float,
     gps_lng: float,
-    skip_existing: bool = True
+    skip_existing: bool = True,
+    max_frames: int | None = None,
 ) -> int:
     """
     Run the complete video ingestion pipeline.
@@ -42,9 +43,9 @@ def ingest_video(
     1. Downloads the video from Google Drive to a temp directory
     2. Extracts frames at 1 frame per second
     3. For each frame:
-       a. Generates a detailed caption using LLaVA
-       b. Creates a 384-dim embedding of the caption
-       c. Stores frame data in MongoDB (embeddings + metadata)
+       a. Generates three captions (brief / detailed / regional) via Florence-2
+       b. Creates three 384-dim embeddings from those captions
+       c. Stores frame data in MongoDB (frame_embeddings + frame_metadata)
     4. Deletes the temporary video file
     5. Returns the total number of frames processed
     
@@ -104,6 +105,9 @@ def ingest_video(
         print(f"STEP 2: Extracting frames from video")
         print(f"{'='*60}")
         frames = extract_frames(temp_video_path, cam_id)
+        # Allow tests to limit frames for fast end-to-end checks
+        if max_frames is not None:
+            frames = frames[:max_frames]
         total_frames = len(frames)
         print(f"Extracted {total_frames} frames")
         
@@ -122,13 +126,13 @@ def ingest_video(
                 continue
             
             try:
-                # Step 3a: Generate caption using LLaVA
+                # Step 3a: Generate brief / detailed / regional captions via Florence-2
                 print(f"  [{i+1}/{total_frames}] Captioning {frame_id}...")
-                caption = generate_caption(frame['image_bytes'])
-                
-                # Step 3b: Generate embedding from caption
+                captions = generate_caption(frame['image_bytes'])
+
+                # Step 3b: Generate three 384-dim embeddings from captions
                 print(f"  [{i+1}/{total_frames}] Embedding {frame_id}...")
-                embedding = generate_embedding(caption)
+                embeddings = generate_embeddings_for_captions(captions)
                 
                 # Step 3c: Store frame in MongoDB
                 print(f"  [{i+1}/{total_frames}] Storing {frame_id}...")
@@ -136,8 +140,12 @@ def ingest_video(
                     '_id': frame_id,
                     'cam_id': frame['cam_id'],
                     'timestamp': frame['timestamp'],
-                    'embedding': embedding,
-                    'caption': caption,
+                    'caption_brief': captions['brief'],
+                    'caption_detailed': captions['detailed'],
+                    'caption_regional': captions['regional'],
+                    'embedding_brief': embeddings['embedding_brief'],
+                    'embedding_detailed': embeddings['embedding_detailed'],
+                    'embedding_regional': embeddings['embedding_regional'],
                     'frame_image': Binary(frame['image_bytes']),
                     'gdrive_url': gdrive_url,
                     'gps_lat': gps_lat,
