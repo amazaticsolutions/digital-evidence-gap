@@ -1,88 +1,32 @@
 import { Search, Clock, CheckCircle2, Loader2, ExternalLink, FileText } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
-
-interface Case {
-  id: string;
-  title: string;
-  description: string;
-  mediaCount: number;
-  uploadProgress: number;
-  status: 'processing' | 'completed' | 'failed';
-  createdAt: string;
-}
+import { getCases } from '../../services/cases.service';
+import type { DemoCase as Case } from '../../constants/pastCases.constants';
 
 export function PastCases() {
   const navigate = useNavigate();
   const [cases, setCases] = useState<Case[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load cases from localStorage
   useEffect(() => {
-    const loadCases = () => {
-      const storedCases = JSON.parse(localStorage.getItem('cases') || '[]');
-      
-      // Demo case that always appears
-      const demoCase: Case = {
-        id: 'demo-traffic-case',
-        title: 'Highway Traffic Analysis - Route 66',
-        description: 'Traffic surveillance footage analysis for vehicle tracking',
-        mediaCount: 1,
-        uploadProgress: 100,
-        status: 'completed',
-        createdAt: new Date('2026-02-18T09:30:00').toISOString(),
-      };
-      
-      // Add 3 more demo cases for better demonstration
-      const additionalDemoCases: Case[] = [
-        {
-          id: 'demo-parking-case',
-          title: 'Parking Lot Incident - Mall Plaza',
-          description: 'Security camera footage from parking structure',
-          mediaCount: 3,
-          uploadProgress: 100,
-          status: 'completed',
-          createdAt: new Date('2026-02-17T14:20:00').toISOString(),
-        },
-        {
-          id: 'demo-processing-case',
-          title: 'Bank Security Review - Downtown Branch',
-          description: 'Multi-camera surveillance system analysis',
-          mediaCount: 8,
-          uploadProgress: 100,
-          status: 'completed',
-          createdAt: new Date('2026-02-19T16:45:00').toISOString(),
-        },
-        {
-          id: 'demo-warehouse-case',
-          title: 'Warehouse Theft Investigation',
-          description: 'Internal camera footage and access logs',
-          mediaCount: 5,
-          uploadProgress: 100,
-          status: 'completed',
-          createdAt: new Date('2026-02-16T11:10:00').toISOString(),
-        },
-        {
-          id: 'demo-intersection-case',
-          title: 'Intersection Vehicle Tracking - Main St & 5th Ave',
-          description: 'Vehicle movement analysis at busy intersection',
-          mediaCount: 1,
-          uploadProgress: 100,
-          status: 'completed',
-          createdAt: new Date('2026-02-15T08:15:00').toISOString(),
-        },
-      ];
-      
-      // Check if demo case already exists in stored cases
-      const hasDemoCase = storedCases.some((c: Case) => c.id === 'demo-traffic-case');
-      
-      // Combine all cases: stored cases + demo cases (if not already present)
-      let allCases = [...storedCases];
-      if (!hasDemoCase) {
-        allCases = [...storedCases, ...additionalDemoCases, demoCase];
+    const loadCases = async () => {
+      try {
+        setIsLoading(true);
+        const response = await getCases();
+        if (response.success) {
+          console.log(response.data);
+          setCases(response.data);
+        } else {
+          setError('Failed to load cases.');
+        }
+      } catch {
+        setError('An unexpected error occurred.');
+      } finally {
+        setIsLoading(false);
       }
-      
-      setCases(allCases);
     };
 
     loadCases();
@@ -134,6 +78,24 @@ export function PastCases() {
 
   return (
     <div className="flex-1 overflow-auto">
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" strokeWidth={1.5} />
+        </div>
+      )}
+
+      {/* Error state */}
+      {!isLoading && error && (
+        <div className="max-w-7xl mx-auto p-8">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+            {error}
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      {!isLoading && !error && (
       <div className="max-w-7xl mx-auto p-8">
         {/* Header */}
         <div className="mb-8">
@@ -256,6 +218,7 @@ export function PastCases() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
