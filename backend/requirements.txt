@@ -48,3 +48,32 @@ sentry-sdk==1.40.0
 # Utilities
 requests==2.31.0
 Pillow==10.2.0
+
+# ==============================================================================
+# Multimedia RAG Engine
+# ==============================================================================
+
+# Video Processing
+opencv-python==4.9.0.80
+numpy==1.26.4
+
+# Embeddings
+sentence-transformers==2.5.1
+
+# PyTorch (CPU build — use torch+cu118 for GPU)
+torch==2.2.1
+torchvision==0.17.1
+
+# LLM / query pipeline
+ollama==0.1.7
+
+# Florence-2 frame captioning
+transformers==4.40.0
+# timm is required by the Florence-2 vision encoder
+timm==0.9.16
+# einops is required by Florence-2 attention layers
+einops==0.8.2
+
+# Person re-identification (install separately if needed: torchreid)
+# torchreid==1.4.0
+# gdown==5.1.0

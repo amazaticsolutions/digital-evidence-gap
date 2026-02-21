@@ -115,13 +115,18 @@ class TestCoreURLs(TestCase):
         """Test that include patterns reference correct app names."""
         from core.urls import urlpatterns
 
-        expected_apps = ['apps.users.urls', 'apps.evidence.urls', 'apps.search.urls']
+        expected_apps = {'src.users.urls', 'src.evidence.urls', 'src.search.urls'}
+        found_apps = set()
 
         for pattern in urlpatterns:
-            if hasattr(pattern, 'urlconf_module'):
-                # This is an include pattern
-                if pattern.urlconf_module in expected_apps:
-                    expected_apps.remove(pattern.urlconf_module)
+            # urlconf_name is the imported module; compare by __name__
+            urlconf = getattr(pattern, 'urlconf_name', None)
+            if urlconf is None:
+                continue
+            name = getattr(urlconf, '__name__', None) if not isinstance(urlconf, str) else urlconf
+            if isinstance(name, str) and name in expected_apps:
+                found_apps.add(name)
 
         # All expected apps should have been found
-        self.assertEqual(len(expected_apps), 0, f"Missing URL includes for: {expected_apps}")
+        missing = expected_apps - found_apps
+        self.assertEqual(len(missing), 0, f"Missing URL includes for: {missing}")

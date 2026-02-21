@@ -20,7 +20,7 @@ class TestRequestLoggingMiddleware:
     @pytest.fixture
     def middleware(self):
         """Create middleware instance."""
-        return RequestLoggingMiddleware()
+        return RequestLoggingMiddleware(get_response=lambda r: None)
 
     @pytest.fixture
     def request_factory(self):
@@ -117,7 +117,7 @@ class TestExceptionHandlingMiddleware:
     @pytest.fixture
     def middleware(self):
         """Create middleware instance."""
-        return ExceptionHandlingMiddleware()
+        return ExceptionHandlingMiddleware(get_response=lambda r: None)
 
     @pytest.fixture
     def request_factory(self):

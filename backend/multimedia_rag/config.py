@@ -25,8 +25,8 @@ load_dotenv(_env_path)
 # =============================================================================
 
 # MongoDB Atlas connection URI (loaded from backend's .env)
-# Maps to MONGO_INITDB_DATABASE in backend/.env
-MONGODB_URI: str = os.getenv("MONGO_INITDB_DATABASE", "")
+# Supports both MONGODB_URI (preferred) and legacy MONGO_INITDB_DATABASE
+MONGODB_URI: str = os.getenv("MONGODB_URI", "") or os.getenv("MONGO_INITDB_DATABASE", "")
 
 # Database name for storing all evidence data
 MONGODB_DB_NAME: str = "evidence_db"
@@ -130,7 +130,7 @@ def validate_config() -> bool:
     errors = []
     
     if not MONGODB_URI:
-        errors.append("MONGO_INITDB_DATABASE environment variable is not set in backend/.env")
+        errors.append("MONGODB_URI environment variable is not set in backend/.env")
     
     if not GOOGLE_CREDENTIALS_PATH:
         errors.append("GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH environment variable is not set in backend/.env")

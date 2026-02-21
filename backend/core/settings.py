@@ -37,17 +37,17 @@ INSTALLED_APPS = [
     'corsheaders',
 
     # Project apps
-    'apps.users',
-    'apps.evidence',
-    'apps.search',
-    'apps.common',
+    'src.users',
+    'src.evidence',
+    'src.search',
+    'src.common',
 ]
 
 # Environment-specific apps
 if DJANGO_ENV == 'development':
     INSTALLED_APPS += [
         'django_extensions',  # Useful development tools
-        'drf_yasg',  # API documentation
+        # 'drf_yasg',  # API documentation (commented out due to pkg_resources issue)
     ]
 
 # Custom user model
@@ -178,7 +178,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.CustomPagination',
+    'DEFAULT_PAGINATION_CLASS': 'src.common.pagination.CustomPagination',
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -187,7 +187,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
     ],
-    'EXCEPTION_HANDLER': 'apps.common.exceptions.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'src.common.exceptions.custom_exception_handler',
 }
 
 # Environment-specific REST Framework settings
@@ -213,14 +213,19 @@ SIMPLE_JWT = {
 }
 
 # CORS configuration
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000',
+).split(',')
 if DJANGO_ENV == 'development':
-    CORS_ALLOWED_ORIGINS += [
+    CORS_ALLOWED_ORIGINS = list(set(CORS_ALLOWED_ORIGINS + [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:8080',
         'http://127.0.0.1:8080',
-    ]
+    ]))
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
     'DELETE',
