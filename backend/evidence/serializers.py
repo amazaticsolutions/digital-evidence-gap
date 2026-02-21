@@ -90,6 +90,69 @@ class GDriveLinkSerializer(serializers.Serializer):
     )
 
 
+class GDriveUploadSerializer(serializers.Serializer):
+    """
+    Serializer for uploading a video/image file directly to Google Drive.
+    
+    Request fields:
+        file: The file to upload (video or image)
+        cam_id: Camera identifier (required)
+        gps_lat: GPS latitude (default: 0.0)
+        gps_lng: GPS longitude (default: 0.0)
+        case_id: Associated case ID (optional)
+        folder_id: Google Drive folder ID (optional, uses default)
+    """
+    file = serializers.FileField(
+        required=True,
+        help_text="Video or image file to upload to Google Drive"
+    )
+    cam_id = serializers.CharField(
+        required=True,
+        max_length=100,
+        help_text="Camera identifier (e.g., 'cam1', 'lobby_camera')"
+    )
+    gps_lat = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS latitude of camera location"
+    )
+    gps_lng = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS longitude of camera location"
+    )
+    case_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=100,
+        help_text="Associated case ID"
+    )
+    folder_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=200,
+        help_text="Google Drive folder ID (optional, uses default if not provided)"
+    )
+
+
+class GDriveUploadResponseSerializer(serializers.Serializer):
+    """
+    Response serializer for Google Drive upload.
+    """
+    success = serializers.BooleanField()
+    evidence_id = serializers.CharField()
+    filename = serializers.CharField()
+    file_size = serializers.IntegerField()
+    media_type = serializers.CharField()
+    duration = serializers.FloatField(allow_null=True)
+    storage_type = serializers.CharField()
+    gdrive_file_id = serializers.CharField()
+    gdrive_url = serializers.CharField()
+    status = serializers.CharField()
+
+
 class GDriveFileItemSerializer(serializers.Serializer):
     """
     Serializer for a single Google Drive file in batch upload.

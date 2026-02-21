@@ -175,6 +175,109 @@ class GDriveLinkView(APIView):
             )
 
 
+class GDriveUploadView(APIView):
+    """
+    Upload a video/image file directly to Google Drive.
+    
+    This endpoint accepts a multipart form data with a file and metadata,
+    uploads the file to Google Drive, and creates a database record.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Upload a video/image file directly to Google Drive",
+        manual_parameters=[
+            openapi.Parameter(
+                'file',
+                openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                required=True,
+                description='Video or image file to upload'
+            ),
+            openapi.Parameter(
+                'cam_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=True,
+                description='Camera identifier'
+            ),
+            openapi.Parameter(
+                'gps_lat',
+                openapi.IN_FORM,
+                type=openapi.TYPE_NUMBER,
+                required=False,
+                description='GPS latitude'
+            ),
+            openapi.Parameter(
+                'gps_lng',
+                openapi.IN_FORM,
+                type=openapi.TYPE_NUMBER,
+                required=False,
+                description='GPS longitude'
+            ),
+            openapi.Parameter(
+                'case_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description='Associated case ID'
+            ),
+            openapi.Parameter(
+                'folder_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description='Google Drive folder ID (optional)'
+            ),
+        ],
+        responses={
+            201: 'File uploaded successfully',
+            400: 'Validation error',
+            401: 'Not authenticated',
+            500: 'Server error'
+        },
+        tags=['Evidence']
+    )
+    def post(self, request):
+        """Upload a file to Google Drive."""
+        from .serializers import GDriveUploadSerializer
+        
+        serializer = GDriveUploadSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get user ID from authenticated request
+            user_id = str(request.user.id)
+            
+            result = services.upload_video_to_gdrive(
+                file=serializer.validated_data['file'],
+                cam_id=serializer.validated_data['cam_id'],
+                uploaded_by_user_id=user_id,
+                gps_lat=serializer.validated_data.get('gps_lat', 0.0),
+                gps_lng=serializer.validated_data.get('gps_lng', 0.0),
+                case_id=serializer.validated_data.get('case_id'),
+                folder_id=serializer.validated_data.get('folder_id')
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+            
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": "Upload failed", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class GDriveBatchUploadView(APIView):
     """
     Register multiple Google Drive files (videos/images) for processing.

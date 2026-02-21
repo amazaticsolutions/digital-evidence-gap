@@ -4,6 +4,7 @@ Evidence app URL configuration.
 Endpoints:
     POST   /upload/              - Upload video file (local storage)
     POST   /gdrive/              - Register Google Drive video link
+    POST   /gdrive/upload/       - Upload file directly to Google Drive
     POST   /gdrive/batch/        - Register multiple Google Drive files
     GET    /videos/              - List all videos
     GET    /videos/<video_id>/   - Get video details
@@ -16,6 +17,7 @@ from django.urls import path
 from .views import (
     VideoUploadView,
     GDriveLinkView,
+    GDriveUploadView,
     GDriveBatchUploadView,
     VideoListView,
     VideoDetailView,
@@ -29,6 +31,7 @@ urlpatterns = [
     # Video upload endpoints
     path('upload/', VideoUploadView.as_view(), name='video-upload'),
     path('gdrive/', GDriveLinkView.as_view(), name='gdrive-link'),
+    path('gdrive/upload/', GDriveUploadView.as_view(), name='gdrive-upload'),
     path('gdrive/batch/', GDriveBatchUploadView.as_view(), name='gdrive-batch'),
     
     # Video management endpoints

@@ -25,7 +25,8 @@ SILENCED_SYSTEM_CHECKS = [
 ]
 
 # Allowed hosts
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,https://disquietly-ungarnered-faustina.ngrok-free.dev').split(',')
+ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev']
 
 # Application definition
 INSTALLED_APPS = [
@@ -210,8 +211,8 @@ if DJANGO_ENV == 'development':
 
 # JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', 15))),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', 1))),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', 2))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', 3))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
@@ -232,6 +233,7 @@ if DJANGO_ENV == 'development':
         'http://127.0.0.1:3000',
         'http://localhost:8080',
         'http://127.0.0.1:8080',
+        'https://disquietly-ungarnered-faustina.ngrok-free.dev'
     ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [

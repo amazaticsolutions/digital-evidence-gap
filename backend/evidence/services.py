@@ -311,6 +311,128 @@ def upload_video_gdrive_link(
     }
 
 
+def upload_video_to_gdrive(
+    file,
+    cam_id: str,
+    uploaded_by_user_id: str,
+    gps_lat: float = 0.0,
+    gps_lng: float = 0.0,
+    case_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Upload a video/image file directly to Google Drive.
+    
+    This saves the file temporarily to disk, uploads it to Google Drive,
+    and creates a database record with the Google Drive file info.
+    
+    Args:
+        file: Django UploadedFile object
+        cam_id: Camera identifier
+        uploaded_by_user_id: ID of the user uploading
+        gps_lat: GPS latitude
+        gps_lng: GPS longitude
+        case_id: Associated case ID
+        folder_id: Google Drive folder ID (optional, uses default if not provided)
+        metadata: Additional metadata
+    
+    Returns:
+        Dict containing upload result with evidence_id and Google Drive details
+    
+    Raises:
+        ValueError: If validation fails
+        IOError: If file save fails
+        Exception: If Google Drive upload fails
+    """
+    from utils.google_drive import upload_file_to_drive
+    
+    # Validate file
+    content_type = file.content_type
+    if content_type not in ALLOWED_MIME_TYPES:
+        raise ValueError(
+            f"Invalid file type: {content_type}. "
+            f"Allowed types: {', '.join(ALLOWED_MIME_TYPES)}"
+        )
+    
+    if file.size > MAX_FILE_SIZE:
+        raise ValueError(f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB")
+    
+    # Determine media type
+    media_type = get_media_type_from_mime(content_type)
+    
+    # Generate unique filename
+    file_ext = Path(file.name).suffix.lower()
+    unique_filename = f"{uuid.uuid4().hex}{file_ext}"
+    temp_path = Path(settings.BASE_DIR) / "tmp" / unique_filename
+    temp_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Save file temporarily
+        with open(temp_path, 'wb') as dest:
+            for chunk in file.chunks():
+                dest.write(chunk)
+        
+        # Get video duration if it's a video
+        duration = None
+        if media_type == MediaEvidence.MEDIA_VIDEO:
+            duration = get_video_duration(str(temp_path))
+        
+        # Upload to Google Drive
+        gdrive_result = upload_file_to_drive(
+            file_path=str(temp_path),
+            filename=file.name,
+            folder_id=folder_id,
+            mime_type=content_type
+        )
+        
+        gdrive_file_id = gdrive_result.get('id')
+        gdrive_url = gdrive_result.get('webViewLink') or f"https://drive.google.com/file/d/{gdrive_file_id}/view"
+        
+        # Create database record
+        doc = MediaEvidence.create_document(
+            filename=file.name,
+            cam_id=cam_id,
+            file_size=file.size,
+            storage_type=MediaEvidence.STORAGE_GDRIVE,
+            uploaded_by_user_id=uploaded_by_user_id,
+            media_type=media_type,
+            mime_type=content_type,
+            gdrive_file_id=gdrive_file_id,
+            gdrive_url=gdrive_url,
+            gdrive_folder_id=folder_id or os.getenv('GOOGLE_DRIVE_FOLDER_ID', ''),
+            gps_lat=gps_lat,
+            gps_lng=gps_lng,
+            case_id=case_id,
+            duration=duration,
+            metadata=metadata
+        )
+        
+        db = _get_db()
+        result = db[MediaEvidence.COLLECTION_NAME].insert_one(doc)
+        evidence_id = str(result.inserted_id)
+        
+        return {
+            "success": True,
+            "evidence_id": evidence_id,
+            "filename": file.name,
+            "file_size": file.size,
+            "media_type": media_type,
+            "duration": duration,
+            "storage_type": "gdrive",
+            "gdrive_file_id": gdrive_file_id,
+            "gdrive_url": gdrive_url,
+            "status": MediaEvidence.STATUS_PENDING
+        }
+        
+    except Exception as e:
+        raise Exception(f"Failed to upload to Google Drive: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def upload_gdrive_batch(
     files: List[Dict[str, Any]],
     cam_id: str,
