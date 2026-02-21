@@ -1,113 +1,183 @@
-# Digital Evidence Gap API
+# Digital Evidence Gap
 
-A production-ready Django REST Framework application for managing digital evidence with secure file uploads to Google Drive and advanced search capabilities. Built with clean architecture principles and service layer pattern.
+A production-ready full-stack application for managing digital evidence with secure file uploads to Google Drive, AI-powered search capabilities, and a modern React frontend. Built with clean architecture principles and service layer pattern.
 
-## 🚀 Features
+## Features
 
 - **User Management**: Custom user authentication with JWT tokens
 - **Evidence Upload**: Secure file upload system with Google Drive integration
-- **Advanced Search**: Full-text search with history tracking
+- **AI-Powered Search**: Semantic search using LLMs and vector embeddings via LangChain
+- **Frame Extraction**: Automatic 1-second frame extraction from uploaded videos with AI-generated context
+- **Image Context Generation**: Automatic AI context generation for uploaded images stored in VectorDB
+- **Case Management**: Organize evidence by case with metadata and conversation history
 - **MongoDB Integration**: NoSQL database with optimized indexing
 - **Clean Architecture**: Service layer pattern with separation of concerns
 - **Production Ready**: Docker containerization, environment-based configuration
 - **Security**: JWT authentication, CORS, file validation, logging
-- **API Documentation**: RESTful endpoints with proper error handling
 
-## 🛠 Tech Stack
+## Tech Stack
 
-- **Backend**: Python 3.12.x, Django 5.x.x, Django REST Framework
-- **Database**: MongoDB (PyMongo driver)
+### Backend
+- **Runtime**: Python 3.12.x
+- **Framework**: Django 5.x, Django REST Framework
+- **Database**: MongoDB Atlas (PyMongo driver)
 - **Authentication**: JWT (djangorestframework-simplejwt)
 - **File Storage**: Google Drive API (Service Account)
+- **AI / LLM**: OpenAI API, LangChain (LLMs + VectorDB)
 - **Containerization**: Docker & Docker Compose
 - **Architecture**: Clean Architecture, Service Layer Pattern
 
-## 📁 Project Structure
+### Frontend
+- **Framework**: React 18, TypeScript
+- **Build Tool**: Vite 6
+- **Styling**: Tailwind CSS 4, shadcn/ui (Radix UI primitives)
+- **UI Components**: MUI (Material UI), Lucide React icons
+- **Routing**: React Router 7
+- **Forms**: React Hook Form
+- **Charts**: Recharts
+- **Testing**: Cypress
+
+## Project Structure
 
 ```
-digital_evidence_gap/
+digital-evidence-gap/
 │
-├── manage.py                     # Django management script
-├── requirements.txt              # Python dependencies
-├── .env.example                 # Environment variables template
-├── .gitignore                   # Git ignore patterns
-├── README.md                    # Project documentation
+├── README.md
+├── .gitignore
 │
-├── core/                        # Django core configuration
-│   ├── __init__.py
-│   ├── asgi.py                  # ASGI configuration
-│   ├── wsgi.py                  # WSGI configuration
-│   ├── settings.py              # Django settings (environment-aware)
-│   ├── urls.py                  # Main URL configuration
-│   ├── middleware.py            # Custom middleware
+├── backend/                          # Django REST API
+│   ├── manage.py                     # Django management script
+│   ├── requirements.txt              # Python dependencies
+│   ├── .env.example                  # Environment variables template
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   ├── pytest.ini
 │   │
-│
-├── apps/                        # Django applications
+│   ├── core/                         # Django core configuration
+│   │   ├── __init__.py
+│   │   ├── asgi.py
+│   │   ├── wsgi.py
+│   │   ├── settings.py               # Environment-aware settings
+│   │   ├── urls.py                   # Main URL configuration
+│   │   └── middleware.py             # Custom middleware
 │   │
-│   ├── users/                   # User management app
-│   │   ├── __init__.py, admin.py, apps.py, managers.py
-│   │   ├── models.py, serializers.py, views.py, urls.py
-│   │   ├── permissions.py, services.py, selectors.py, tests.py
+│   ├── src/                          # Django applications
+│   │   ├── users/                    # User management
+│   │   │   ├── models.py, serializers.py, views.py, urls.py
+│   │   │   └── services.py, selectors.py, permissions.py
+│   │   │
+│   │   ├── evidence/                 # Evidence management
+│   │   │   ├── models.py, serializers.py, views.py, urls.py
+│   │   │   └── services.py, selectors.py, permissions.py
+│   │   │
+│   │   ├── search/                   # Search functionality
+│   │   │   ├── models.py, serializers.py, views.py, urls.py
+│   │   │   └── services.py, selectors.py, filters.py
+│   │   │
+│   │   └── common/                   # Shared utilities
+│   │       ├── models.py, mixins.py, permissions.py
+│   │       └── pagination.py, exceptions.py, validators.py
 │   │
-│   ├── evidence/                # Evidence management app
-│   │   ├── __init__.py, apps.py, models.py, serializers.py
-│   │   ├── views.py, urls.py, services.py, selectors.py
-│   │   ├── permissions.py, tests.py
+│   ├── utils/                        # Utility modules
+│   │   ├── mongo_client.py           # MongoDB connection
+│   │   ├── google_drive.py           # Google Drive integration
+│   │   ├── jwt_helper.py
+│   │   ├── file_utils.py
+│   │   └── constants.py
 │   │
-│   ├── search/                  # Search functionality app
-│   │   ├── __init__.py, apps.py, models.py, serializers.py
-│   │   ├── views.py, urls.py, services.py, selectors.py
-│   │   ├── filters.py, tests.py
+│   ├── scripts/                      # Management scripts
+│   │   ├── create_indexes.py         # MongoDB index creation
+│   │   └── seed_data.py              # Data seeding
 │   │
-│   └── common/                  # Shared utilities
-│       ├── __init__.py, models.py, mixins.py, permissions.py
-│       ├── pagination.py, exceptions.py, validators.py
+│   └── tests/                        # Test suite
 │
-├── utils/                       # Utility modules
-│   ├── __init__.py, mongo_client.py, google_drive.py
-│   ├── jwt_helper.py, file_utils.py, constants.py
-│
-├── scripts/                     # Management scripts
-│   ├── create_indexes.py        # MongoDB index creation
-│   └── seed_data.py             # Data seeding
-│
-└── docker/                      # Docker configuration
-    ├── Dockerfile               # Container definition
-    └── docker-compose.yml       # Multi-container setup
+└── frontend/                         # React TypeScript application
+    ├── index.html
+    ├── package.json
+    ├── vite.config.ts
+    ├── postcss.config.mjs
+    ├── .env.example
+    ├── .gitignore
+    │
+    └── src/
+        ├── main.tsx                  # Application entry point
+        │
+        ├── app/
+        │   ├── App.tsx               # Root component
+        │   ├── routes.tsx            # Application routing
+        │   │
+        │   ├── components/           # Shared components
+        │   │   ├── Sidebar.tsx
+        │   │   ├── MediaUploadCard.tsx
+        │   │   ├── figma/            # Figma-generated components
+        │   │   └── ui/               # shadcn/ui component library
+        │   │       ├── button.tsx, input.tsx, card.tsx
+        │   │       ├── dialog.tsx, form.tsx, table.tsx
+        │   │       └── ... (full Radix UI component set)
+        │   │
+        │   ├── layouts/
+        │   │   └── MainLayout.tsx    # Main application layout
+        │   │
+        │   └── pages/
+        │       ├── NewCase.tsx       # Create new case page
+        │       ├── PastCases.tsx     # Case listing page
+        │       └── ChatWorkspace.tsx # AI chat & evidence workspace
+        │
+        ├── constants/                # App-wide constants
+        │   ├── api.constants.ts
+        │   ├── newCase.constants.ts
+        │   ├── pastCases.constants.ts
+        │   ├── chatWorkspace.constants.ts
+        │   └── mediaUploadCard.constants.ts
+        │
+        ├── services/                 # API service layer
+        │   ├── cases.service.ts
+        │   └── chatWorkspace.service.ts
+        │
+        └── styles/                   # Global styles
+            ├── index.css
+            ├── tailwind.css
+            ├── fonts.css
+            └── theme.css
 ```
 
-## 📋 Prerequisites
+## Prerequisites
 
+### Backend
 - Python 3.12.x
-- MongoDB 6.0+
+- MongoDB Atlas account (or local MongoDB 6.0+)
 - Google Cloud Platform account with Drive API enabled
 - Docker & Docker Compose (optional)
 
-## 🔧 Installation
+### Frontend
+- Node.js 18.x or higher
+- npm 9.x or higher (or pnpm / yarn)
 
-### 1. Clone the repository
+## Installation
+
+### Backend
+
+#### 1. Navigate to the backend directory
 
 ```bash
-git clone <repository-url>
-cd digital-evidence-gap
+cd backend
 ```
 
-### 2. Create virtual environment
+#### 2. Create and activate a virtual environment
 
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-### 3. Install dependencies
+#### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Environment Configuration
-
-Copy the `.env` template and configure your environment variables:
+#### 4. Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -137,31 +207,22 @@ JWT_REFRESH_TOKEN_LIFETIME=1440
 GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH=path/to/service-account.json
 GOOGLE_DRIVE_FOLDER_ID=your-drive-folder-id
 
+# OpenAI Configuration
+OPENAI_API_KEY=your-openai-api-key
+
 # CORS Configuration
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ```
 
-### 5. MongoDB Setup
-
-Ensure MongoDB is running and create the database:
-
-```bash
-# Using Docker
-docker run -d -p 27017:27017 --name mongodb mongo:6.0
-
-# Or install MongoDB locally and start the service
-```
-
-### 6. Google Drive Setup
+#### 5. Google Drive Setup
 
 1. Create a Google Cloud Project
 2. Enable Google Drive API
-3. Create a Service Account
-4. Download the service account key JSON file
-5. Share the target Drive folder with the service account email
-6. Set the `GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH` in your `.env`
+3. Create a Service Account and download the key JSON file
+4. Share the target Drive folder with the service account email
+5. Set `GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH` in your `.env`
 
-### 7. Database Initialization
+#### 6. Initialize the database
 
 ```bash
 # Create MongoDB indexes
@@ -171,15 +232,13 @@ python scripts/create_indexes.py
 python scripts/seed_data.py
 ```
 
-### 8. Run Migrations (if any Django models exist)
+#### 7. Run migrations
 
 ```bash
 python manage.py migrate
 ```
 
-## 🚀 Running the Application
-
-### Development Mode
+#### 8. Start the backend server
 
 ```bash
 python manage.py runserver
@@ -187,21 +246,73 @@ python manage.py runserver
 
 The API will be available at `http://localhost:8000`
 
-### Production Mode
+---
+
+### Frontend
+
+#### 1. Navigate to the frontend directory
 
 ```bash
-export DJANGO_ENV=production
-python manage.py runserver 0.0.0.0:8000
+cd frontend
 ```
 
-### Using Docker
+#### 2. Set Node.js version to 20 using nvm
+
+If you don't have nvm installed, follow the [nvm installation guide](https://github.com/nvm-sh/nvm#installing-and-updating) first.
 
 ```bash
-# Build and run with Docker Compose
-docker-compose -f docker/docker-compose.yml up --build
+# Install Node.js 22 (if not already installed)
+nvm install 22
+
+# Switch to Node.js 22
+nvm use 22
+
+# Verify the version
+node --version  # Should print v22.x.x
 ```
 
-## 📚 API Documentation
+#### 3. Install dependencies
+
+```bash
+npm install
+```
+
+#### 3. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+#### 4. Start the development server
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`
+
+#### 5. Build for production
+
+```bash
+npm run build
+```
+
+---
+
+### Using Docker (Backend)
+
+```bash
+cd backend
+docker-compose up --build
+```
+
+## API Documentation
 
 ### Authentication Endpoints
 
@@ -254,6 +365,7 @@ Content-Type: multipart/form-data
 Form Data:
 - file: [image/video file]
 - title: "Evidence Title"
+- case_name: "Case Name"
 ```
 
 **Response:**
@@ -262,6 +374,7 @@ Form Data:
 {
   "id": "evidence_id",
   "title": "Evidence Title",
+  "case_name": "Case Name",
   "file_type": "image/jpeg",
   "drive_file_id": "1abc...xyz",
   "drive_url": "https://drive.google.com/file/d/1abc...xyz/view",
@@ -295,8 +408,9 @@ Authorization: Bearer <access_token>
 
 **Query Parameters:**
 
-- `q`: Search query (title search)
-- `file_type`: Filter by file type (image/video)
+- `q`: Search query (semantic search via VectorDB)
+- `file_type`: Filter by file type (`image` / `video`)
+- `case_name`: Filter by case name
 - `uploaded_by`: Filter by user ID
 
 #### Search History
@@ -313,30 +427,39 @@ DELETE /api/search/history/{id}/
 Authorization: Bearer <access_token>
 ```
 
-## 🧪 Testing
+## Testing
 
-### Run Tests
+### Backend
 
 ```bash
+cd backend
+
+# Run all tests
 python manage.py test
-```
 
-### Run Specific App Tests
+# Run specific app tests
+python manage.py test src.users
+python manage.py test src.evidence
+python manage.py test src.search
 
-```bash
-python manage.py test apps.users
-python manage.py test apps.evidence
-python manage.py test apps.search
-```
-
-### Coverage Report
-
-```bash
-coverage run --source='apps' manage.py test
+# Coverage report
+coverage run --source='src' manage.py test
 coverage report
 ```
 
-## 🔒 Security Features
+### Frontend
+
+```bash
+cd frontend
+
+# Open Cypress test runner
+npm run cy:open
+
+# Run Cypress tests headlessly
+npm run cy:run
+```
+
+## Security Features
 
 - JWT token-based authentication
 - Password hashing with Django's built-in hasher
@@ -346,79 +469,14 @@ coverage report
 - Environment-based secret management
 - Service account authentication for Google Drive
 
-## 🐳 Docker Deployment
-
-### Build and Run
-
-```bash
-# Development
-docker-compose -f docker/docker-compose.yml up --build
-
-# Production
-docker-compose -f docker/docker-compose.prod.yml up --build -d
-```
-
-### Docker Commands
-
-```bash
-# View logs
-docker-compose logs -f
-
-# Run commands in container
-docker-compose exec web python manage.py shell
-
-# Stop services
-docker-compose down
-```
-
-## 📊 Database Management
-
-### MongoDB Collections
+## Database Collections (MongoDB)
 
 - **users**: User accounts and authentication data
-- **evidence**: File metadata and Google Drive references
+- **cases**: Case metadata, evidence list, and conversation history
+- **evidence**: File metadata, Google Drive references, and AI-generated context
 - **search_history**: User search queries and filters
 
-### Index Management
-
-```bash
-# Create indexes
-python scripts/create_indexes.py
-
-# Indexes created:
-# - users.email (unique)
-# - evidence.uploaded_by
-# - search_history.user_id
-# - evidence.title (text index)
-```
-
-## 🔧 Development
-
-### Code Style
-
-```bash
-# Format code
-black .
-
-# Sort imports
-isort .
-
-# Lint code
-flake8 .
-```
-
-### Pre-commit Hooks
-
-```bash
-# Install pre-commit
-pip install pre-commit
-pre-commit install
-
-# Run on all files
-pre-commit run --all-files
-```
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -428,31 +486,13 @@ pre-commit run --all-files
 
 ### Development Guidelines
 
-- Follow PEP 8 style guidelines
+- Follow PEP 8 style guidelines for Python
+- Follow ESLint / TypeScript strict rules for frontend code
 - Write tests for new features
 - Update documentation
 - Use meaningful commit messages
 - Follow the existing code structure
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support, email support@digital-evidence-gap.com or create an issue in the repository.
-
-## 📈 Roadmap
-
-- [ ] API rate limiting
-- [ ] File compression and optimization
-- [ ] Batch upload functionality
-- [ ] Advanced search filters
-- [ ] Real-time notifications
-- [ ] Admin dashboard
-- [ ] API versioning
-- [ ] Caching layer
-
----
-
-**Built with ❤️ using Django REST Framework**
