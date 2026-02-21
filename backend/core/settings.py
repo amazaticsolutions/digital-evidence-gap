@@ -37,10 +37,10 @@ INSTALLED_APPS = [
     'corsheaders',
 
     # Project apps
-    'apps.users',
-    'apps.evidence',
-    'apps.search',
-    'apps.common',
+    'src.users',
+    'src.evidence',
+    'src.search',
+    'src.common',
 ]
 
 # Environment-specific apps
@@ -178,7 +178,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.CustomPagination',
+    'DEFAULT_PAGINATION_CLASS': 'src.common.pagination.CustomPagination',
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -187,7 +187,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
     ],
-    'EXCEPTION_HANDLER': 'apps.common.exceptions.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'src.common.exceptions.custom_exception_handler',
 }
 
 # Environment-specific REST Framework settings
