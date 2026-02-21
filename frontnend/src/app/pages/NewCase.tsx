@@ -2,6 +2,13 @@ import { Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { MediaUploadCard } from '../components/MediaUploadCard';
+import {
+  FILE_SIZE_UNITS,
+  ACCEPTED_FILE_TYPES,
+  UPLOAD_SIMULATION_INTERVAL_MS,
+  UPLOAD_SIMULATION_MAX_INCREMENT,
+} from '../../constants/newCase.constants';
+import { createCase } from '../../services/cases.service';
 
 interface MediaFile {
   id: string;
@@ -45,7 +52,7 @@ export function NewCase() {
   const simulateUpload = (fileId: string) => {
     let progress = 0;
     const interval = setInterval(() => {
-      progress += Math.random() * 15;
+      progress += Math.random() * UPLOAD_SIMULATION_MAX_INCREMENT;
       if (progress >= 100) {
         progress = 100;
         clearInterval(interval);
@@ -69,7 +76,7 @@ export function NewCase() {
           )
         );
       }
-    }, 500);
+    }, UPLOAD_SIMULATION_INTERVAL_MS);
   };
 
   const getFileType = (mimeType: string): 'video' | 'image' | 'audio' | 'document' => {
@@ -82,16 +89,15 @@ export function NewCase() {
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + FILE_SIZE_UNITS[i];
   };
 
   const handleRemoveFile = (id: string) => {
     setMediaFiles((prev) => prev.filter((file) => file.id !== id));
   };
 
-  const handleCreateCase = () => {
+  const handleCreateCase = async () => {
     if (!caseTitle.trim()) return;
 
     // Calculate overall upload progress
@@ -99,20 +105,12 @@ export function NewCase() {
     const completedFiles = mediaFiles.filter((f) => f.status === 'completed').length;
     const overallProgress = totalFiles > 0 ? Math.floor((completedFiles / totalFiles) * 100) : 100;
 
-    // Save case to past cases with processing status
-    const newCase = {
-      id: Math.random().toString(36).substr(2, 9),
+    await createCase({
       title: caseTitle,
       description: caseDescription,
       mediaCount: totalFiles,
       uploadProgress: overallProgress,
-      status: overallProgress === 100 ? 'completed' : 'processing',
-      createdAt: new Date().toISOString(),
-    };
-
-    // Store in localStorage for demo purposes
-    const existingCases = JSON.parse(localStorage.getItem('cases') || '[]');
-    localStorage.setItem('cases', JSON.stringify([newCase, ...existingCases]));
+    });
 
     // Navigate to past cases to see the processing status
     navigate('/past-cases');
@@ -177,7 +175,7 @@ export function NewCase() {
                 <input
                   type="file"
                   multiple
-                  accept="video/*,image/*,audio/*,.pdf,.doc,.docx"
+                  accept={ACCEPTED_FILE_TYPES}
                   onChange={handleFileUpload}
                   className="hidden"
                 />
