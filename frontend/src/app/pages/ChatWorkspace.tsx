@@ -11,6 +11,10 @@ import {
   type EvidenceFile,
   type CaseMeta,
 } from '../../services/chatWorkspace.service';
+import { Modal } from '../components/Modal';
+import { VideoPlayer } from '../components/VideoPlayer';
+import { ImageViewer } from '../components/ImageViewer';
+import { EvidenceList } from '../components/EvidenceList';
 
 export function ChatWorkspace() {
   const { id } = useParams();
@@ -22,7 +26,15 @@ export function ChatWorkspace() {
   const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
   const [showUploadDropdown, setShowUploadDropdown] = useState(false);
   const [showEvidenceList, setShowEvidenceList] = useState(false);
-  const [activeTab, setActiveTab] = useState<'videos' | 'images' | 'audios'>('videos');
+  const [selectedSource, setSelectedSource] = useState<{
+    filename: string;
+    type: 'video' | 'image' | 'audio';
+    url: string;
+    cameraId: string;
+    timestamp: string;
+    date: string;
+  } | null>(null);
+  const [showSourceModal, setShowSourceModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -106,34 +118,54 @@ export function ChatWorkspace() {
   const getCaseTitle = () => caseMeta?.title ?? 'Loading...';
   const getEvidenceCount = () => caseMeta?.evidenceCount ?? '—';
 
-  // Group evidence by date
-  const groupEvidenceByDate = (files: EvidenceFile[]) => {
-    const grouped: { [key: string]: EvidenceFile[] } = {};
-    files.forEach(file => {
-      if (!grouped[file.uploadDate]) {
-        grouped[file.uploadDate] = [];
-      }
-      grouped[file.uploadDate].push(file);
-    });
-    return grouped;
-  };
-
-  // Filter evidence by active tab
-  const getFilteredEvidence = () => {
-    return evidenceFiles.filter(file => {
-      if (activeTab === 'videos') return file.type === 'video';
-      if (activeTab === 'images') return file.type === 'image';
-      if (activeTab === 'audios') return file.type === 'audio';
-      return false;
-    });
-  };
-
   const handleDeleteEvidence = async (evidenceId: string) => {
     if (!id) return;
     const res = await deleteEvidenceFile(id, evidenceId);
     if (res.success) {
       setEvidenceFiles((prev) => prev.filter((f) => f.id !== evidenceId));
     }
+  };
+
+  const getFileTypeFromName = (filename: string): 'video' | 'image' | 'audio' => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (['mp4', 'avi', 'mov', 'mkv', 'webm'].includes(ext || '')) return 'video';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext || '')) return 'image';
+    if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(ext || '')) return 'audio';
+    return 'video'; // default
+  };
+
+  const handleSourceClick = (source: { filename: string; cameraId: string; timestamp: string; date: string }) => {
+    const type = getFileTypeFromName(source.filename);
+    // TODO: Replace with actual file URL from API
+    const mockUrl = type === 'video' 
+      ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+      : 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200';
+    
+    setSelectedSource({
+      ...source,
+      type,
+      url: mockUrl,
+    });
+    setShowSourceModal(true);
+  };
+
+  const handleEvidenceFileClick = (file: EvidenceFile) => {
+    // TODO: Replace with actual file URL from API
+    const mockUrl = file.type === 'video' 
+      ? 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+      : file.type === 'image'
+      ? 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200'
+      : 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+    
+    setSelectedSource({
+      filename: file.name,
+      cameraId: 'Evidence File',
+      timestamp: file.uploadTime,
+      date: file.uploadDate,
+      type: file.type,
+      url: mockUrl,
+    });
+    setShowSourceModal(true);
   };
 
   return (
@@ -237,6 +269,7 @@ export function ChatWorkspace() {
                           {message.sources.map((source, idx) => (
                             <div
                               key={idx}
+                              onClick={() => handleSourceClick(source)}
                               className="bg-gray-50 rounded-xl p-4 hover:shadow-md transition-all cursor-pointer shadow-sm"
                             >
                               <div className="flex items-start gap-4">
@@ -271,102 +304,12 @@ export function ChatWorkspace() {
         </div>
       ) : (
         /* Evidence List Area */
-        <div className="flex-1 overflow-y-auto px-8 py-6 bg-gray-50">
-          <div className="max-w-4xl mx-auto space-y-6">
-            {/* Back Button and Tabs - Single Row */}
-            <div className="flex items-center justify-between">
-              {/* Back Button - Left Side */}
-              <button
-                onClick={() => setShowEvidenceList(false)}
-                className="flex items-center gap-2 text-sm text-gray-600 hover:text-black transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" strokeWidth={2} />
-                <span className="font-medium">Back to Chat</span>
-              </button>
-
-              {/* Tabs - Right Side */}
-              <div className="bg-white rounded-xl p-1.5 inline-flex gap-1 shadow-md">
-                <button
-                  onClick={() => setActiveTab('videos')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'videos' 
-                      ? 'bg-black text-white shadow-md' 
-                      : 'bg-transparent text-gray-600 hover:bg-gray-50 hover:text-black'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Video className="w-4 h-4" strokeWidth={2} />
-                    <span>Videos</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab('images')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'images' 
-                      ? 'bg-black text-white shadow-md' 
-                      : 'bg-transparent text-gray-600 hover:bg-gray-50 hover:text-black'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4" strokeWidth={2} />
-                    <span>Images</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab('audios')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'audios' 
-                      ? 'bg-black text-white shadow-md' 
-                      : 'bg-transparent text-gray-600 hover:bg-gray-50 hover:text-black'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Mic className="w-4 h-4" strokeWidth={2} />
-                    <span>Audios</span>
-                  </div>
-                </button>
-              </div>
-            </div>
-
-            {/* Evidence Files */}
-            <div className="space-y-4">
-              {Object.entries(groupEvidenceByDate(getFilteredEvidence())).map(([date, files]) => (
-                <div key={date} className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">{date}</h3>
-                  {files.map(file => (
-                    <div
-                      key={file.id}
-                      className="bg-white rounded-xl p-4 hover:shadow-lg transition-all cursor-pointer shadow-md"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
-                          {file.type === 'video' && <Video className="w-6 h-6 text-gray-600" strokeWidth={2} />}
-                          {file.type === 'image' && <ImageIcon className="w-6 h-6 text-gray-600" strokeWidth={2} />}
-                          {file.type === 'audio' && <Mic className="w-6 h-6 text-gray-600" strokeWidth={2} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-black mb-2">{file.name}</p>
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                            <span>{file.uploadTime}</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteEvidence(file.id);
-                          }}
-                          className="p-2 hover:bg-gray-50 rounded-lg transition-colors group"
-                        >
-                          <Trash2 className="w-4.5 h-4.5 text-gray-400 group-hover:text-red-600 transition-colors" strokeWidth={2} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <EvidenceList
+          evidenceFiles={evidenceFiles}
+          onBack={() => setShowEvidenceList(false)}
+          onDeleteEvidence={handleDeleteEvidence}
+          onFileClick={handleEvidenceFileClick}
+        />
       )}
 
       {/* Input Area - Only show in Chat mode */}
@@ -435,6 +378,62 @@ export function ChatWorkspace() {
           </div>
         </>
       )}
+
+      {/* Source Viewer Modal */}
+      <Modal
+        isOpen={showSourceModal}
+        onClose={() => {
+          setShowSourceModal(false);
+          setSelectedSource(null);
+        }}
+        size="full"
+      >
+        {selectedSource && (
+          <div className="space-y-4">
+            {/* Source metadata */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <h3 className="text-lg font-semibold text-black mb-3">
+                {selectedSource.filename}
+              </h3>
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <div className="flex items-center gap-1.5">
+                  <Camera className="w-4 h-4" strokeWidth={2} />
+                  <span>{selectedSource.cameraId}</span>
+                </div>
+                <span>•</span>
+                <span>{selectedSource.date}</span>
+                <span>•</span>
+                <span>{selectedSource.timestamp}</span>
+              </div>
+            </div>
+
+            {/* Viewer */}
+            {selectedSource.type === 'video' && (
+              <VideoPlayer
+                src={selectedSource.url}
+                title={selectedSource.filename}
+              />
+            )}
+            {selectedSource.type === 'image' && (
+              <ImageViewer
+                src={selectedSource.url}
+                alt={selectedSource.filename}
+                title={selectedSource.filename}
+              />
+            )}
+            {selectedSource.type === 'audio' && (
+              <div className="bg-gray-50 rounded-xl p-8 text-center">
+                <Mic className="w-16 h-16 text-gray-400 mx-auto mb-4" strokeWidth={2} />
+                <p className="text-gray-600 mb-4">Audio player coming soon</p>
+                <audio controls className="w-full">
+                  <source src={selectedSource.url} />
+                  Your browser does not support the audio element.
+                </audio>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
