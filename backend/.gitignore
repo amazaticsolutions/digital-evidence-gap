@@ -36,6 +36,10 @@ vite.config.ts.timestamp-*
 .env.staging
 .env.test
 
+# Google service account keys
+protean-genius-470217-p0-0f13606c27f8.json
+*.service-account.json
+
 # =============================
 # Editor & IDE
 # =============================
