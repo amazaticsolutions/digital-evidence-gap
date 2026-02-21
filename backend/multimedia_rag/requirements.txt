@@ -1,0 +1,68 @@
+# ==============================================================================
+# Multimedia RAG Engine - Requirements
+# ==============================================================================
+# Install with: pip install -r requirements.txt
+#
+# Note: Some packages may require additional system dependencies:
+#   - ffmpeg: Install via apt/brew (apt install ffmpeg)
+#   - CUDA: Required for GPU acceleration (optional but recommended)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Video Processing
+# ------------------------------------------------------------------------------
+opencv-python==4.9.0.80              # Frame processing and image manipulation
+numpy==1.26.4                        # Numerical operations
+
+# ------------------------------------------------------------------------------
+# Machine Learning - Embeddings
+# ------------------------------------------------------------------------------
+sentence-transformers==2.5.1         # Text embedding model (all-MiniLM-L6-v2)
+torch==2.2.1                         # PyTorch for ML operations
+torchvision==0.17.1                  # Vision utilities for torchreid
+
+# ------------------------------------------------------------------------------
+# Person Re-Identification
+# ------------------------------------------------------------------------------
+torchreid==1.4.0                     # Cross-camera person re-identification
+gdown==5.1.0                         # Required for torchreid model downloads
+
+# ------------------------------------------------------------------------------
+# LLM and Vision Model - Ollama
+# ------------------------------------------------------------------------------
+ollama==0.1.7                        # Ollama Python client for LLaVA and llama3
+
+# ------------------------------------------------------------------------------
+# RAG Pipeline Orchestration
+# ------------------------------------------------------------------------------
+langchain==0.1.11                    # LangChain core
+langchain-community==0.0.27          # Community integrations
+
+# ------------------------------------------------------------------------------
+# Database - MongoDB
+# ------------------------------------------------------------------------------
+pymongo==4.6.2                       # MongoDB driver with Atlas support
+
+# ------------------------------------------------------------------------------
+# Google Drive Integration
+# ------------------------------------------------------------------------------
+google-auth==2.28.1                  # Google authentication
+google-auth-oauthlib==1.2.0          # OAuth2 for Google APIs
+google-api-python-client==2.119.0    # Google Drive API client
+
+# ------------------------------------------------------------------------------
+# Image Processing
+# ------------------------------------------------------------------------------
+Pillow==10.2.0                       # Image handling for various formats
+
+# ------------------------------------------------------------------------------
+# Configuration and Utilities
+# ------------------------------------------------------------------------------
+python-dotenv==1.0.1                 # Environment variable management
+
+# ------------------------------------------------------------------------------
+# Optional: Development and Testing
+# ------------------------------------------------------------------------------
+# pytest==8.0.2                      # Testing framework
+# black==24.2.0                      # Code formatting
+# flake8==7.0.0                      # Linting
