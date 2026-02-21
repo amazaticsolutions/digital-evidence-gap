@@ -2,7 +2,7 @@
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-
+from django_mongodb_backend.fields import ObjectIdField
 from .managers import UserManager
 
 
@@ -10,6 +10,7 @@ class User(AbstractUser):
     """
     Custom user model that uses email as the username field.
     """
+    # id = ObjectIdField(primary_key=True, editable=False)
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, blank=True)
     

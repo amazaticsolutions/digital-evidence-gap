@@ -1,12 +1,14 @@
 # Digital Evidence Gap API
 
-A production-ready Django REST Framework application for managing digital evidence with secure file uploads to Google Drive and advanced search capabilities. Built with clean architecture principles and service layer pattern.
+A production-ready Django REST Framework application for managing digital evidence with secure file uploads to Google Drive, advanced search capabilities, and case-specific chat functionality. Built with clean architecture principles and service layer pattern.
 
 ## 🚀 Features
 
 - **User Management**: Custom user authentication with JWT tokens
-- **Evidence Upload**: Secure file upload system with Google Drive integration
-- **Advanced Search**: Full-text search with history tracking
+- **Evidence Upload**: Secure file upload system with Google Drive integration (single & batch uploads)
+- **Case Management**: Create cases with direct file uploads, manage evidence, and track investigations
+- **Advanced Search**: Full-text search with history tracking and case-based organization
+- **Chat System**: Case-specific messaging for collaboration and investigation notes
 - **MongoDB Integration**: NoSQL database with optimized indexing
 - **Clean Architecture**: Service layer pattern with separation of concerns
 - **Production Ready**: Docker containerization, environment-based configuration
@@ -54,10 +56,14 @@ digital_evidence_gap/
 │   │   ├── views.py, urls.py, services.py, selectors.py
 │   │   ├── permissions.py, tests.py
 │   │
-│   ├── search/                  # Search functionality app
+│   ├── search/                  # Case management app
 │   │   ├── __init__.py, apps.py, models.py, serializers.py
 │   │   ├── views.py, urls.py, services.py, selectors.py
 │   │   ├── filters.py, tests.py
+│   │
+│   ├── chat/                    # Chat/messaging app
+│   │   ├── __init__.py, apps.py, models.py, serializers.py
+│   │   ├── views.py, urls.py, services.py
 │   │
 │   └── common/                  # Shared utilities
 │       ├── __init__.py, models.py, mixins.py, permissions.py
@@ -206,21 +212,21 @@ docker-compose -f docker/docker-compose.yml up --build
 ### Authentication Endpoints
 
 #### Register User
-
 ```http
-POST /api/users/register/
+POST /api/users/signup/
 Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "securepassword123"
+  "password": "securepassword123",
+  "first_name": "John",
+  "last_name": "Doe"
 }
 ```
 
 #### Login
-
 ```http
-POST /api/users/login/
+POST /api/users/signin/
 Content-Type: application/json
 
 {
@@ -230,87 +236,338 @@ Content-Type: application/json
 ```
 
 **Response:**
-
 ```json
 {
   "access": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
   "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
   "user": {
-    "id": "user_id",
-    "email": "user@example.com"
+    "id": 1,
+    "email": "user@example.com",
+    "first_name": "John",
+    "last_name": "Doe"
   }
 }
 ```
 
-### Evidence Endpoints
+#### Refresh Token
+```http
+POST /api/users/refresh/
+Content-Type: application/json
 
-#### Upload Evidence
+{
+  "refresh": "refresh_token_here"
+}
+```
 
+#### Get User Profile
+```http
+GET /api/users/me/
+Authorization: Bearer <access_token>
+```
+
+#### Update User Profile
+```http
+PATCH /api/users/me/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "first_name": "Updated Name"
+}
+```
+
+### Case Management Endpoints
+
+#### Create Case (with optional file uploads)
+```http
+POST /api/search/cases/
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+
+Form Data:
+- title: "Murder Investigation Case"
+- description: "Investigation details"
+- evidence_files: [video1.mp4, image1.jpg] (optional)
+- cam_id: "CAM001" (optional)
+- gps_lat: 12.345 (optional)
+- gps_lng: 67.890 (optional)
+```
+
+**Response:**
+```json
+{
+  "id": "case_id",
+  "title": "Murder Investigation Case",
+  "description": "Investigation details",
+  "evidence_count": 2,
+  "created_at": "2024-02-21T10:30:00Z"
+}
+```
+
+#### List Cases (Detailed)
+```http
+GET /api/search/cases/
+Authorization: Bearer <access_token>
+```
+
+**Query Parameters:**
+- `status`: Filter by status (active, completed, archived, pending)
+- `skip`: Pagination offset
+- `limit`: Maximum results (default: 50)
+
+#### List Cases (Summary)
+```http
+GET /api/search/cases/summary/
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "cases": [
+    {
+      "id": "case_id",
+      "title": "Murder Investigation Case",
+      "evidence_count": 3,
+      "created_at": "2024-02-21T10:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+#### Get Case Details
+```http
+GET /api/search/cases/{case_id}/
+Authorization: Bearer <access_token>
+```
+
+#### Update Case
+```http
+PATCH /api/search/cases/{case_id}/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "title": "Updated Case Title",
+  "status": "completed"
+}
+```
+
+#### Delete Case
+```http
+DELETE /api/search/cases/{case_id}/
+Authorization: Bearer <access_token>
+```
+
+#### Add Evidence to Case
+```http
+POST /api/search/cases/{case_id}/evidence/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "evidence_id": "evidence_id_here"
+}
+```
+
+#### Remove Evidence from Case
+```http
+DELETE /api/search/cases/{case_id}/evidence/{evidence_id}/
+Authorization: Bearer <access_token>
+```
+
+#### Assign Case to User
+```http
+POST /api/search/cases/{case_id}/assign/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "user_id": 2
+}
+```
+
+### Evidence Management Endpoints
+
+#### Upload Evidence (Local Storage)
 ```http
 POST /api/evidence/upload/
 Authorization: Bearer <access_token>
 Content-Type: multipart/form-data
 
 Form Data:
-- file: [image/video file]
-- title: "Evidence Title"
+- video: [video file]
+- cam_id: "CAM001"
+- gps_lat: 12.345 (optional)
+- gps_lng: 67.890 (optional)
+- case_id: "case_id" (optional)
+```
+
+#### Upload Evidence to Google Drive (Batch)
+```http
+POST /api/evidence/gdrive/upload/
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+
+Form Data:
+- files: [video1.mp4, image1.jpg, video2.mp4]
+- cam_id: "CAM001"
+- gps_lat: 12.345 (optional)
+- gps_lng: 67.890 (optional)
+- case_id: "case_id" (optional)
+- folder_id: "drive_folder_id" (optional)
 ```
 
 **Response:**
-
 ```json
 {
-  "id": "evidence_id",
-  "title": "Evidence Title",
-  "file_type": "image/jpeg",
-  "drive_file_id": "1abc...xyz",
-  "drive_url": "https://drive.google.com/file/d/1abc...xyz/view",
-  "uploaded_by": "user_id",
-  "created_at": "2024-01-01T12:00:00Z"
+  "batch_id": "BATCH-A1B2C3D4E5F6",
+  "total_files": 3,
+  "successful_uploads": 3,
+  "failed_uploads": 0,
+  "evidence_ids": ["id1", "id2", "id3"],
+  "results": [...]
+}
+```
+
+#### Register Google Drive Links
+```http
+POST /api/evidence/gdrive/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "gdrive_url": "https://drive.google.com/file/d/FILE_ID/view",
+  "cam_id": "CAM001",
+  "gps_lat": 12.345,
+  "gps_lng": 67.890,
+  "case_id": "case_id"
+}
+```
+
+#### Batch Register Google Drive Files
+```http
+POST /api/evidence/gdrive/batch/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "files": [
+    {
+      "gdrive_file_id": "FILE_ID_1",
+      "filename": "video1.mp4"
+    }
+  ],
+  "cam_id": "CAM001"
 }
 ```
 
 #### List Evidence
-
 ```http
-GET /api/evidence/
-Authorization: Bearer <access_token>
-```
-
-#### Get Evidence Details
-
-```http
-GET /api/evidence/{id}/
-Authorization: Bearer <access_token>
-```
-
-### Search Endpoints
-
-#### Search Evidence
-
-```http
-GET /api/search/?q=evidence&file_type=image
+GET /api/evidence/videos/
 Authorization: Bearer <access_token>
 ```
 
 **Query Parameters:**
+- `case_id`: Filter by case
+- `status`: Filter by processing status
+- `limit`: Maximum results
+- `skip`: Pagination offset
 
-- `q`: Search query (title search)
-- `file_type`: Filter by file type (image/video)
-- `uploaded_by`: Filter by user ID
-
-#### Search History
-
+#### Get Evidence Details
 ```http
-GET /api/search/history/
+GET /api/evidence/videos/{video_id}/
 Authorization: Bearer <access_token>
 ```
 
-#### Delete Search History
-
+#### Delete Evidence
 ```http
-DELETE /api/search/history/{id}/
+DELETE /api/evidence/videos/{video_id}/
 Authorization: Bearer <access_token>
+```
+
+#### Start RAG Processing
+```http
+POST /api/evidence/process/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "video_id": "video_id_here"
+}
+```
+
+#### Get Processing Job Status
+```http
+GET /api/evidence/jobs/{job_id}/
+Authorization: Bearer <access_token>
+```
+
+### Chat System Endpoints
+
+#### Get Complete Case Details (with Chat & Evidence)
+```http
+GET /api/chat/case/{case_id}/
+Authorization: Bearer <access_token>
+```
+
+**Response:**
+```json
+{
+  "case": {
+    "id": "case_id",
+    "title": "Case Title",
+    "evidence_count": 3,
+    "created_at": "2024-02-21T10:30:00Z"
+  },
+  "chat": {
+    "id": "chat_id",
+    "title": "Case Title",
+    "created_at": "2024-02-21T10:30:00Z"
+  },
+  "messages": [
+    {
+      "id": "msg_id",
+      "content": "Please analyze this evidence",
+      "message_type": "user",
+      "created_at": "2024-02-21T10:35:00Z"
+    }
+  ],
+  "evidence_files": [
+    {
+      "id": "evidence_id",
+      "filename": "video1.mp4",
+      "file_path": "https://drive.google.com/file/d/...",
+      "media_type": "video",
+      "upload_date": "2024-02-21T10:30:00Z"
+    }
+  ]
+}
+```
+
+#### Send Message to Case Chat
+```http
+POST /api/chat/case/{case_id}/message/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "content": "Your message here",
+  "message_type": "user"
+}
+```
+
+### API Documentation
+
+#### Swagger UI
+```
+GET /swagger/
+```
+
+#### ReDoc
+```
+GET /redoc/
 ```
 
 ## 🧪 Testing
@@ -444,14 +701,32 @@ For support, email support@digital-evidence-gap.com or create an issue in the re
 
 ## 📈 Roadmap
 
+### ✅ Completed Features
+- [x] User authentication and JWT tokens
+- [x] Evidence upload (single and batch) to Google Drive
+- [x] Case management with evidence linking
+- [x] Chat system for case discussions
+- [x] Advanced search and filtering
+- [x] API documentation with Swagger/ReDoc
+- [x] MongoDB integration
+- [x] Google Drive API integration
+- [x] Multimedia RAG processing pipeline
+- [x] Person re-identification capabilities
+
+### 🔄 In Progress
 - [ ] API rate limiting
 - [ ] File compression and optimization
-- [ ] Batch upload functionality
-- [ ] Advanced search filters
 - [ ] Real-time notifications
-- [ ] Admin dashboard
+- [ ] Admin dashboard enhancements
+
+### 🚀 Future Enhancements
 - [ ] API versioning
-- [ ] Caching layer
+- [ ] Caching layer (Redis)
+- [ ] Background task processing (Celery)
+- [ ] Advanced analytics and reporting
+- [ ] Mobile app companion
+- [ ] Integration with external forensic tools
+- [ ] Audit logging and compliance features
 
 ---
 

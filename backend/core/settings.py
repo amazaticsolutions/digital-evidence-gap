@@ -424,19 +424,19 @@ if DJANGO_ENV == 'production':
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
     SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
-    # Monitoring
-    if os.getenv('SENTRY_DSN'):
-        import sentry_sdk
-        from sentry_sdk.integrations.django import DjangoIntegration
-
-        sentry_sdk.init(
-            dsn=os.getenv('SENTRY_DSN'),
-            integrations=[DjangoIntegration()],
-            environment='production',
-            traces_sample_rate=1.0,
-            send_default_pii=True
-        )
-
     # Database connection pool settings for production
     MONGODB_MAX_POOL_SIZE = int(os.getenv('MONGODB_MAX_POOL_SIZE', 50))
     MONGODB_MIN_POOL_SIZE = int(os.getenv('MONGODB_MIN_POOL_SIZE', 10))
+
+# Monitoring - Available in all environments when SENTRY_DSN is configured
+if os.getenv('SENTRY_DSN'):
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=os.getenv('SENTRY_DSN'),
+        integrations=[DjangoIntegration()],
+        environment=DJANGO_ENV,
+        traces_sample_rate=1.0,
+        send_default_pii=True
+    )

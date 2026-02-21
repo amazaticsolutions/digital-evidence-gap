@@ -174,6 +174,8 @@ def get_case_with_evidence(case_id: str) -> Tuple[Optional[Dict[str, Any]], Opti
         if not case_doc:
             return None, "Case not found"
         
+        print(f"DEBUG get_case_with_evidence: Raw case_doc user_id = {case_doc.get('user_id')}, type = {type(case_doc.get('user_id'))}")
+        
         case = _format_case_document(case_doc)
         
         # Get evidence details
@@ -385,16 +387,53 @@ def delete_case(case_id: str) -> Tuple[bool, Optional[str]]:
 
 def _format_case_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Format a case document for API response."""
+    # Convert ObjectId fields to appropriate types
+    case_id = doc.get("case_id")
+    if isinstance(case_id, ObjectId):
+        case_id = str(case_id)
+    
+    # user_id - convert ObjectId to string for consistent handling
+    user_id = doc.get("user_id")
+    print(f"DEBUG _format_case_document: Raw user_id = {user_id}, type = {type(user_id)}")
+    if isinstance(user_id, ObjectId):
+        user_id = str(user_id)  # Convert ObjectId to string
+        print(f"DEBUG: user_id was ObjectId, converted to string: {user_id}")
+    elif user_id is None:
+        print(f"WARNING: user_id is None")
+        user_id = None
+    else:
+        # Keep as-is (could be int or string)
+        user_id = str(user_id)  # Convert to string for consistency
+    print(f"DEBUG _format_case_document: Formatted user_id = {user_id}, type = {type(user_id)}")
+    
+    # assigned_to_user_id - convert ObjectId to string for consistent handling
+    assigned_to = doc.get("assigned_to_user_id")
+    if isinstance(assigned_to, ObjectId):
+        assigned_to = str(assigned_to)  # Convert ObjectId to string
+    elif assigned_to is not None:
+        assigned_to = str(assigned_to)  # Convert to string for consistency
+    else:
+        assigned_to = None
+    
+    # evidence_ids should be strings
+    evidence_ids = doc.get("evidence_ids", [])
+    formatted_evidence_ids = []
+    for eid in evidence_ids:
+        if isinstance(eid, ObjectId):
+            formatted_evidence_ids.append(str(eid))
+        else:
+            formatted_evidence_ids.append(str(eid))
+    
     return {
         "id": str(doc["_id"]),
-        "case_id": doc.get("case_id"),
+        "case_id": case_id,
         "title": doc.get("title"),
         "description": doc.get("description"),
-        "user_id": doc.get("user_id"),
-        "assigned_to_user_id": doc.get("assigned_to_user_id"),
+        "user_id": user_id,
+        "assigned_to_user_id": assigned_to,
         "assigned_at": doc.get("assigned_at"),
-        "evidence_count": doc.get("evidence_count", len(doc.get("evidence_ids", []))),
-        "evidence_ids": doc.get("evidence_ids", []),
+        "evidence_count": int(doc.get("evidence_count", len(doc.get("evidence_ids", [])))),
+        "evidence_ids": formatted_evidence_ids,
         "status": doc.get("status"),
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),

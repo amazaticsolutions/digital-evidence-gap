@@ -20,6 +20,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from bson import ObjectId
 
 from .serializers import (
     CreateCaseSerializer,
@@ -40,7 +41,7 @@ class CaseListCreateView(APIView):
     List all cases for current user or create a new case.
     """
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [MultiPartParser, FormParser]
     
     @swagger_auto_schema(
         operation_description="Get all cases for the current user",
@@ -79,6 +80,8 @@ class CaseListCreateView(APIView):
         skip = int(request.query_params.get('skip', 0))
         limit = int(request.query_params.get('limit', 50))
         
+        print(services)
+        print(request)
         cases, total, error = services.get_user_cases(
             user_id=request.user.id,
             status_filter=status_filter,
@@ -92,10 +95,8 @@ class CaseListCreateView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        return Response({
-            "cases": cases,
-            "total": total
-        }, status=status.HTTP_200_OK)
+        serializer = CaseListSerializer({"cases": cases, "total": total})
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @swagger_auto_schema(
         operation_description="Create a new case with optional evidence file uploads",
@@ -307,8 +308,14 @@ class CaseDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        # Check ownership
-        if case['user_id'] != request.user.id:
+        # Check ownership - compare as strings for consistency
+        case_user_id = str(case['user_id']) if case['user_id'] else None
+        request_user_id = str(request.user.id) if request.user.id else None
+        
+        print(f"DEBUG: case_user_id (str) = {case_user_id}")
+        print(f"DEBUG: request_user_id (str) = {request_user_id}")
+        
+        if case_user_id != request_user_id:
             return Response(
                 {"error": "You don't have permission to view this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -350,7 +357,7 @@ class CaseDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        if existing_case['user_id'] != request.user.id:
+        if str(existing_case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to update this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -395,7 +402,7 @@ class CaseDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        if existing_case['user_id'] != request.user.id:
+        if str(existing_case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to delete this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -452,7 +459,7 @@ class CaseEvidenceView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        if existing_case['user_id'] != request.user.id:
+        if str(existing_case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to modify this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -502,7 +509,7 @@ class CaseEvidenceDeleteView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        if existing_case['user_id'] != request.user.id:
+        if str(existing_case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to modify this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -562,7 +569,7 @@ class CaseAssignView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        if existing_case['user_id'] != request.user.id:
+        if str(existing_case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to assign this case"},
                 status=status.HTTP_403_FORBIDDEN

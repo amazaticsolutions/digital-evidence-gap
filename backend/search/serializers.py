@@ -66,8 +66,8 @@ class CaseResponseSerializer(serializers.Serializer):
     case_id = serializers.CharField(allow_null=True, help_text="Case reference ID")
     title = serializers.CharField(help_text="Case title")
     description = serializers.CharField(allow_null=True, help_text="Case description")
-    user_id = serializers.IntegerField(help_text="ID of user who created the case")
-    assigned_to_user_id = serializers.IntegerField(
+    user_id = serializers.CharField(allow_null=True, help_text="ID of user who created the case")
+    assigned_to_user_id = serializers.CharField(
         allow_null=True,
         help_text="ID of assigned user"
     )
