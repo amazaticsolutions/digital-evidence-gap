@@ -23,8 +23,10 @@ from drf_yasg import openapi
 from .serializers import (
     VideoUploadSerializer,
     GDriveLinkSerializer,
+    GDriveUploadSerializer,
     GDriveBatchUploadSerializer,
     BatchUploadResponseSerializer,
+    GDriveBatchUploadResponseSerializer,
     VideoResponseSerializer,
     VideoDetailSerializer,
     VideoListSerializer,
@@ -177,23 +179,25 @@ class GDriveLinkView(APIView):
 
 class GDriveUploadView(APIView):
     """
-    Upload a video/image file directly to Google Drive.
+    Upload video/image files directly to Google Drive.
     
-    This endpoint accepts a multipart form data with a file and metadata,
-    uploads the file to Google Drive, and creates a database record.
+    This endpoint accepts a multipart form data with files and metadata,
+    uploads the files to Google Drive, and creates database records.
+    Supports both single file and batch uploads.
     """
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
-        operation_description="Upload a video/image file directly to Google Drive",
+        operation_description="Upload video/image files directly to Google Drive (supports single or multiple files)",
         manual_parameters=[
             openapi.Parameter(
-                'file',
+                'files',
                 openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Items(type=openapi.TYPE_FILE),
                 required=True,
-                description='Video or image file to upload'
+                description='Video or image files to upload (supports multiple files)'
             ),
             openapi.Parameter(
                 'cam_id',
@@ -232,7 +236,7 @@ class GDriveUploadView(APIView):
             ),
         ],
         responses={
-            201: 'File uploaded successfully',
+            201: GDriveBatchUploadResponseSerializer,
             400: 'Validation error',
             401: 'Not authenticated',
             500: 'Server error'
@@ -240,7 +244,7 @@ class GDriveUploadView(APIView):
         tags=['Evidence']
     )
     def post(self, request):
-        """Upload a file to Google Drive."""
+        """Upload files to Google Drive."""
         from .serializers import GDriveUploadSerializer
         
         serializer = GDriveUploadSerializer(data=request.data)
@@ -255,8 +259,11 @@ class GDriveUploadView(APIView):
             # Get user ID from authenticated request
             user_id = str(request.user.id)
             
-            result = services.upload_video_to_gdrive(
-                file=serializer.validated_data['file'],
+            files = serializer.validated_data['files']
+            
+            # Use batch upload function for consistency
+            result = services.upload_files_to_gdrive(
+                files=files,
                 cam_id=serializer.validated_data['cam_id'],
                 uploaded_by_user_id=user_id,
                 gps_lat=serializer.validated_data.get('gps_lat', 0.0),

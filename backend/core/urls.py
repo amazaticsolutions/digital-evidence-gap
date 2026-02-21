@@ -21,6 +21,7 @@ This API provides endpoints for:
 - **RAG Pipeline**: Process videos through the multimedia RAG engine
 - **Search**: Query processed evidence with natural language
 - **User Management**: Authentication and authorization
+- **Chat**: Case-specific messaging and communication
 
 ### Authentication
 Most endpoints require JWT authentication. Include the token in the Authorization header:
@@ -40,6 +41,7 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/evidence/', include('evidence.urls')),
     path('api/search/', include('search.urls')),
+    path('api/chat/', include('chat.urls')),
 ]
 
 # Swagger/OpenAPI documentation URLs (development only)

@@ -92,19 +92,21 @@ class GDriveLinkSerializer(serializers.Serializer):
 
 class GDriveUploadSerializer(serializers.Serializer):
     """
-    Serializer for uploading a video/image file directly to Google Drive.
+    Serializer for uploading video/image files directly to Google Drive.
     
     Request fields:
-        file: The file to upload (video or image)
+        files: List of files to upload (videos or images)
         cam_id: Camera identifier (required)
         gps_lat: GPS latitude (default: 0.0)
         gps_lng: GPS longitude (default: 0.0)
         case_id: Associated case ID (optional)
         folder_id: Google Drive folder ID (optional, uses default)
     """
-    file = serializers.FileField(
+    files = serializers.ListField(
+        child=serializers.FileField(),
         required=True,
-        help_text="Video or image file to upload to Google Drive"
+        min_length=1,
+        help_text="List of video or image files to upload to Google Drive"
     )
     cam_id = serializers.CharField(
         required=True,
@@ -151,6 +153,19 @@ class GDriveUploadResponseSerializer(serializers.Serializer):
     gdrive_file_id = serializers.CharField()
     gdrive_url = serializers.CharField()
     status = serializers.CharField()
+
+
+class GDriveBatchUploadResponseSerializer(serializers.Serializer):
+    """
+    Response serializer for batch Google Drive uploads.
+    """
+    batch_id = serializers.CharField()
+    total_files = serializers.IntegerField()
+    successful_uploads = serializers.IntegerField()
+    failed_uploads = serializers.IntegerField()
+    results = serializers.ListField(
+        child=GDriveUploadResponseSerializer()
+    )
 
 
 class GDriveFileItemSerializer(serializers.Serializer):

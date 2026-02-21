@@ -4,7 +4,7 @@ Evidence app URL configuration.
 Endpoints:
     POST   /upload/              - Upload video file (local storage)
     POST   /gdrive/              - Register Google Drive video link
-    POST   /gdrive/upload/       - Upload file directly to Google Drive
+    POST   /gdrive/upload/       - Upload files directly to Google Drive (supports single or multiple files)
     POST   /gdrive/batch/        - Register multiple Google Drive files
     GET    /videos/              - List all videos
     GET    /videos/<video_id>/   - Get video details

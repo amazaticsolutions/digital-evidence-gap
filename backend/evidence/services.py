@@ -433,6 +433,90 @@ def upload_video_to_gdrive(
             temp_path.unlink()
 
 
+def upload_files_to_gdrive(
+    files: List,
+    cam_id: str,
+    uploaded_by_user_id: str,
+    gps_lat: float = 0.0,
+    gps_lng: float = 0.0,
+    case_id: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Upload multiple video/image files directly to Google Drive.
+
+    This handles batch upload of multiple files to Google Drive,
+    creating database records for each successful upload.
+
+    Args:
+        files: List of Django UploadedFile objects
+        cam_id: Camera identifier
+        uploaded_by_user_id: ID of the user uploading
+        gps_lat: GPS latitude
+        gps_lng: GPS longitude
+        case_id: Associated case ID
+        folder_id: Google Drive folder ID (optional, uses default if not provided)
+        metadata: Additional metadata
+
+    Returns:
+        Dict containing batch upload results with batch_id and results array
+    """
+    import uuid
+    from typing import List, Dict, Any, Optional
+
+    # Generate batch ID for grouping
+    batch_id = f"BATCH-{uuid.uuid4().hex[:12].upper()}"
+
+    results = []
+    successful = 0
+    failed = 0
+    evidence_ids = []
+
+    for file in files:
+        try:
+            # Use the existing single file upload logic
+            result = upload_video_to_gdrive(
+                file=file,
+                cam_id=cam_id,
+                uploaded_by_user_id=uploaded_by_user_id,
+                gps_lat=gps_lat,
+                gps_lng=gps_lng,
+                case_id=case_id,
+                folder_id=folder_id,
+                metadata=metadata
+            )
+
+            results.append(result)
+            successful += 1
+            evidence_ids.append(result['evidence_id'])
+
+        except Exception as e:
+            results.append({
+                "success": False,
+                "evidence_id": None,
+                "filename": file.name if hasattr(file, 'name') else 'unknown',
+                "file_size": file.size if hasattr(file, 'size') else 0,
+                "media_type": "unknown",
+                "duration": None,
+                "storage_type": "gdrive",
+                "gdrive_file_id": None,
+                "gdrive_url": None,
+                "status": "failed",
+                "error": str(e)
+            })
+            failed += 1
+
+    return {
+        "batch_id": batch_id,
+        "total_files": len(files),
+        "successful_uploads": successful,
+        "failed_uploads": failed,
+        "evidence_ids": evidence_ids,
+        "results": results
+    }
+
+
 def upload_gdrive_batch(
     files: List[Dict[str, Any]],
     cam_id: str,

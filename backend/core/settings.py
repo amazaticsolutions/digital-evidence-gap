@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'users',
     'evidence',
     'search',
+    'chat',
     'common',
 ]
 
