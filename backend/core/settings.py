@@ -18,12 +18,19 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'change-this-in-production')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development')
 
+# Silence MongoDB AutoField warnings for Django's built-in apps
+# These are expected when using django-mongodb-backend with standard Django apps
+SILENCED_SYSTEM_CHECKS = [
+    'mongodb.E001',  # MongoDB does not support AutoField
+]
+
 # Allowed hosts
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,https://disquietly-ungarnered-faustina.ngrok-free.dev').split(',')
+ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev']
 
 # Application definition
 INSTALLED_APPS = [
-    # Django core apps
+    # Django core apps (minimal for MongoDB)
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -37,10 +44,11 @@ INSTALLED_APPS = [
     'corsheaders',
 
     # Project apps
-    'src.users',
-    'src.evidence',
-    'src.search',
-    'src.common',
+    'users',
+    'evidence',
+    'search',
+    'chat',
+    'common',
 ]
 
 # Environment-specific apps
@@ -97,10 +105,15 @@ MONGODB_PORT = int(os.getenv('MONGODB_PORT', 27017))
 MONGODB_DATABASE = os.getenv('MONGODB_DATABASE', 'digital_evidence_gap')
 MONGODB_USERNAME = os.getenv('MONGODB_USERNAME', '')
 MONGODB_PASSWORD = os.getenv('MONGODB_PASSWORD', '')
+MONGO_URI = os.getenv('MONGO_URI', '')
 
 # Build MongoDB URI
 def get_mongodb_uri():
     """Construct MongoDB connection URI."""
+    # If full MongoDB Atlas URI is provided, use it
+    if MONGO_URI and MONGO_URI.startswith('mongodb'):
+        return MONGO_URI
+    
     if MONGODB_USERNAME and MONGODB_PASSWORD:
         # With authentication
         credentials = f"{quote_plus(MONGODB_USERNAME)}:{quote_plus(MONGODB_PASSWORD)}@"
@@ -118,11 +131,12 @@ def get_mongodb_uri():
 # MongoDB connection settings
 MONGODB_URI = get_mongodb_uri()
 
-# Database configuration for Django (using SQLite for Django-specific tables)
+# Database configuration using django-mongodb-backend
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django_mongodb_backend',
+        'HOST': MONGODB_URI,
+        'NAME': MONGODB_DATABASE,
     }
 }
 
@@ -166,8 +180,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Default primary key field type
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# Default primary key field type for MongoDB
+DEFAULT_AUTO_FIELD = 'django_mongodb_backend.fields.ObjectIdAutoField'
 
 # REST Framework configuration
 REST_FRAMEWORK = {
@@ -178,7 +192,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'src.common.pagination.CustomPagination',
+    'DEFAULT_PAGINATION_CLASS': 'common.pagination.CustomPagination',
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
@@ -187,7 +201,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
     ],
-    'EXCEPTION_HANDLER': 'src.common.exceptions.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'common.exceptions.custom_exception_handler',
 }
 
 # Environment-specific REST Framework settings
@@ -198,8 +212,8 @@ if DJANGO_ENV == 'development':
 
 # JWT Configuration
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', 15))),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', 1))),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', 2))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', 3))),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'ALGORITHM': 'HS256',
@@ -220,6 +234,7 @@ if DJANGO_ENV == 'development':
         'http://127.0.0.1:3000',
         'http://localhost:8080',
         'http://127.0.0.1:8080',
+        'https://disquietly-ungarnered-faustina.ngrok-free.dev'
     ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -409,19 +424,19 @@ if DJANGO_ENV == 'production':
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
     SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
-    # Monitoring
-    if os.getenv('SENTRY_DSN'):
-        import sentry_sdk
-        from sentry_sdk.integrations.django import DjangoIntegration
-
-        sentry_sdk.init(
-            dsn=os.getenv('SENTRY_DSN'),
-            integrations=[DjangoIntegration()],
-            environment='production',
-            traces_sample_rate=1.0,
-            send_default_pii=True
-        )
-
     # Database connection pool settings for production
     MONGODB_MAX_POOL_SIZE = int(os.getenv('MONGODB_MAX_POOL_SIZE', 50))
     MONGODB_MIN_POOL_SIZE = int(os.getenv('MONGODB_MIN_POOL_SIZE', 10))
+
+# Monitoring - Available in all environments when SENTRY_DSN is configured
+if os.getenv('SENTRY_DSN'):
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=os.getenv('SENTRY_DSN'),
+        integrations=[DjangoIntegration()],
+        environment=DJANGO_ENV,
+        traces_sample_rate=1.0,
+        send_default_pii=True
+    )
