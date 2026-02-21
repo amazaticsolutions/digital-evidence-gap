@@ -1,7 +1,6 @@
 """
 URL Configuration for digital_evidence_gap project.
 """
-from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
@@ -38,10 +37,9 @@ Authorization: Bearer <your_token>
 )
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/users/', include('src.users.urls')),
-    path('api/evidence/', include('src.evidence.urls')),
-    path('api/search/', include('src.search.urls')),
+    path('api/users/', include('users.urls')),
+    path('api/evidence/', include('evidence.urls')),
+    path('api/search/', include('search.urls')),
 ]
 
 # Swagger/OpenAPI documentation URLs (development only)

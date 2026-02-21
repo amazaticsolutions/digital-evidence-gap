@@ -4,6 +4,6 @@ from django.apps import AppConfig
 
 
 class UsersConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'src.users'
+    default_auto_field = 'django_mongodb_backend.fields.ObjectIdAutoField'
+    name = 'users'
     verbose_name = 'User Management'

@@ -98,6 +98,8 @@ class UserResponseSerializer(serializers.ModelSerializer):
     """
     Serializer for user response data.
     """
+    id = serializers.CharField(read_only=True)  # ObjectId as string
+    
     class Meta:
         model = User
         fields = [
