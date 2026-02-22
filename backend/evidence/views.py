@@ -2,14 +2,15 @@
 Evidence views for video upload and management API.
 
 API Endpoints:
-    POST   /api/evidence/upload/         - Upload video file (local storage)
-    POST   /api/evidence/gdrive/         - Register Google Drive video link
-    POST   /api/evidence/gdrive/batch/   - Register multiple Google Drive files
-    GET    /api/evidence/videos/         - List all videos
-    GET    /api/evidence/videos/{id}/    - Get video details
-    DELETE /api/evidence/videos/{id}/    - Delete video
-    POST   /api/evidence/process/        - Start RAG pipeline processing
-    GET    /api/evidence/jobs/{id}/      - Get processing job status
+    POST   /api/evidence/upload/              - Upload video file (local storage)
+    POST   /api/evidence/gdrive/              - Register Google Drive video link
+    POST   /api/evidence/gdrive/batch/        - Register multiple Google Drive files
+    POST   /api/evidence/cases/upload/        - Upload files to specific case
+    GET    /api/evidence/videos/              - List all videos
+    GET    /api/evidence/videos/{id}/         - Get video details
+    DELETE /api/evidence/videos/{id}/         - Delete video
+    POST   /api/evidence/process/             - Start RAG pipeline processing
+    GET    /api/evidence/jobs/{id}/           - Get processing job status
 """
 
 from rest_framework import status
@@ -32,7 +33,9 @@ from .serializers import (
     VideoListSerializer,
     VideoListQuerySerializer,
     ProcessingStartSerializer,
-    ProcessingJobSerializer
+    ProcessingJobSerializer,
+    CaseFileUploadSerializer,
+    CaseFileUploadResponseSerializer
 )
 from . import services
 
@@ -550,5 +553,172 @@ class ProcessingJobView(APIView):
         except Exception as e:
             return Response(
                 {"error": "Failed to get job status", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class CaseFileUploadView(APIView):
+    """
+    Upload files (videos/images) to a specific case.
+    
+    This endpoint:
+    1. Verifies the case exists and the user owns it
+    2. Uploads files to Google Drive
+    3. Links the uploaded files to the case
+    4. Returns case_id and uploaded file paths
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Upload video/image files to a specific case",
+        manual_parameters=[
+            openapi.Parameter(
+                'case_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=True,
+                description='Case ID to upload files to'
+            ),
+            openapi.Parameter(
+                'files',
+                openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                required=True,
+                description='Video or image files to upload (supports multiple files)'
+            ),
+            openapi.Parameter(
+                'cam_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=True,
+                description='Camera identifier'
+            ),
+            openapi.Parameter(
+                'gps_lat',
+                openapi.IN_FORM,
+                type=openapi.TYPE_NUMBER,
+                required=False,
+                description='GPS latitude'
+            ),
+            openapi.Parameter(
+                'gps_lng',
+                openapi.IN_FORM,
+                type=openapi.TYPE_NUMBER,
+                required=False,
+                description='GPS longitude'
+            ),
+            openapi.Parameter(
+                'folder_id',
+                openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                required=False,
+                description='Google Drive folder ID (optional)'
+            ),
+        ],
+        responses={
+            201: 'CaseFileUploadResponseSerializer',
+            400: 'Validation error',
+            401: 'Not authenticated',
+            403: 'Permission denied',
+            404: 'Case not found',
+            500: 'Server error'
+        },
+        tags=['Evidence']
+    )
+    def post(self, request):
+        """Upload files to a specific case."""
+        from .serializers import CaseFileUploadSerializer
+        from search import services as search_services
+        
+        serializer = CaseFileUploadSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            case_id = serializer.validated_data['case_id']
+            
+            # Verify case exists and user owns it
+            case, case_error = search_services.get_case_by_id(case_id)
+            if case_error:
+                if "not found" in case_error.lower():
+                    return Response(
+                        {"error": "Case not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                return Response(
+                    {"error": case_error},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            if case['user_id'] != request.user.id:
+                return Response(
+                    {"error": "You don't have permission to upload files to this case"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Upload files to Google Drive
+            files = serializer.validated_data['files']
+            user_id = str(request.user.id)
+            
+            upload_result = services.upload_files_to_gdrive(
+                files=files,
+                cam_id=serializer.validated_data['cam_id'],
+                uploaded_by_user_id=user_id,
+                gps_lat=serializer.validated_data.get('gps_lat', 0.0),
+                gps_lng=serializer.validated_data.get('gps_lng', 0.0),
+                case_id=case_id,
+                folder_id=serializer.validated_data.get('folder_id')
+            )
+            
+            # Format response with case info and file paths
+            uploaded_files = []
+            failed_files = []
+            
+            for result in upload_result.get('results', []):
+                if result.get('success'):
+                    uploaded_files.append({
+                        'evidence_id': result.get('evidence_id'),
+                        'filename': result.get('filename'),
+                        'file_size': result.get('file_size'),
+                        'media_type': result.get('media_type'),
+                        'gdrive_file_id': result.get('gdrive_file_id'),
+                        'gdrive_url': result.get('gdrive_url'),
+                        'cam_id': serializer.validated_data['cam_id'],
+                        'gps_lat': serializer.validated_data.get('gps_lat', 0.0),
+                        'gps_lng': serializer.validated_data.get('gps_lng', 0.0),
+                        'uploaded_at': result.get('uploaded_at'),
+                    })
+                else:
+                    failed_files.append({
+                        'filename': result.get('filename'),
+                        'error': result.get('error')
+                    })
+            
+            response_data = {
+                'success': upload_result.get('successful_uploads', 0) > 0,
+                'case_id': case_id,
+                'case_title': case.get('title', ''),
+                'total_files': upload_result.get('total_files', 0),
+                'successful_uploads': upload_result.get('successful_uploads', 0),
+                'failed_uploads': upload_result.get('failed_uploads', 0),
+                'uploaded_files': uploaded_files,
+                'failed_files': failed_files
+            }
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": "Upload failed", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

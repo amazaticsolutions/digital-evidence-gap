@@ -74,18 +74,46 @@ class ChatWithMessagesSerializer(serializers.Serializer):
     )
 
 
+class MediaItemSerializer(serializers.Serializer):
+    """
+    Serializer for media item in a message.
+    """
+    type = serializers.CharField(help_text="Media type: 'image' or 'video'")
+    url = serializers.CharField(help_text="URL to the media file")
+    description = serializers.CharField(help_text="Description of the media")
+    filename = serializers.CharField(required=False, help_text="Original filename")
+    file_size = serializers.IntegerField(required=False, help_text="File size in bytes")
+    upload_date = serializers.CharField(required=False, help_text="Upload date")
+
+
+class FormattedMessageSerializer(serializers.Serializer):
+    """
+    Serializer for frontend-compatible message format.
+    """
+    id = serializers.CharField(help_text="Message ID")
+    role = serializers.CharField(help_text="Message role: 'user' or 'assistant'")
+    content = serializers.CharField(help_text="Message content")
+    timestamp = serializers.CharField(help_text="Message timestamp in ISO 8601 format")
+    media = serializers.ListField(
+        child=MediaItemSerializer(),
+        help_text="List of media items attached to this message"
+    )
+
+
 class CaseChatDetailSerializer(serializers.Serializer):
     """
     Serializer for complete case details including chat and evidence.
+    Frontend-compatible format with role-based messages and media attachments.
     """
-    case = serializers.DictField(help_text="Case details")
-    chat = ChatResponseSerializer(required=False, allow_null=True)
-    messages = serializers.ListField(
-        child=MessageResponseSerializer(),
-        required=False,
-        help_text="List of chat messages"
-    )
+    case_id = serializers.CharField(help_text="Case ID")
+    case_name = serializers.CharField(help_text="Case name/title")
+    case_description = serializers.CharField(help_text="Case description")
+    total_evidence_files = serializers.IntegerField(help_text="Total number of evidence files")
     evidence_files = serializers.ListField(
-        child=serializers.DictField(),
-        help_text="List of evidence files with paths"
+        child=MediaItemSerializer(),
+        help_text="List of all evidence files for the case"
+    )
+    messages = serializers.ListField(
+        child=FormattedMessageSerializer(),
+        help_text="List of chat messages with role and media"
     )
