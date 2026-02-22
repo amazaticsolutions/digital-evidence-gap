@@ -33,6 +33,8 @@ from .rag_views import (
     RAGIngestView,
     RAGQueryView,
     RAGStatsView
+    FetchMediaView,
+    DeleteEvidenceView,
 )
 
 app_name = 'evidence'
@@ -59,4 +61,7 @@ urlpatterns = [
     path('rag/ingest/', RAGIngestView.as_view(), name='rag-ingest'),
     path('rag/query/', RAGQueryView.as_view(), name='rag-query'),
     path('rag/stats/', RAGStatsView.as_view(), name='rag-stats'),
+    # New media and delete endpoints
+    path('media/', FetchMediaView.as_view(), name='fetch-media'),
+    path('delete/', DeleteEvidenceView.as_view(), name='delete-evidence'),
 ]

@@ -697,47 +697,117 @@ def get_video(video_id: str) -> Optional[Dict[str, Any]]:
 def list_videos(
     case_id: Optional[str] = None,
     status: Optional[str] = None,
+    media_type: Optional[str] = None,
     limit: int = 50,
     skip: int = 0
 ) -> Dict[str, Any]:
     """
-    List video evidence with optional filters.
+    List media evidence (videos and images) with optional filters.
+    Queries both video_evidence (legacy) and media_evidence (new) collections.
     
     Args:
         case_id: Filter by case ID
         status: Filter by processing status
+        media_type: Filter by media type ('video' or 'images' or None for all)
         limit: Maximum results
         skip: Offset for pagination
     
     Returns:
-        Dict with videos list and total count
+        Dict with media files list and total count
     """
-    db = _get_db()
-    collection = db[VideoEvidence.COLLECTION_NAME]
+    def serialize_doc(doc):
+        """Convert MongoDB document to JSON-serializable dict."""
+        result = {}
+        for key, value in doc.items():
+            if isinstance(value, ObjectId):
+                result[key] = str(value)
+            elif isinstance(value, datetime):
+                result[key] = value.isoformat()
+            elif isinstance(value, dict):
+                result[key] = serialize_doc(value)
+            elif isinstance(value, list):
+                result[key] = [serialize_doc(item) if isinstance(item, dict) else 
+                               str(item) if isinstance(item, ObjectId) else
+                               item.isoformat() if isinstance(item, datetime) else item
+                               for item in value]
+            else:
+                result[key] = value
+        return result
     
-    # Build filter
-    query = {}
-    if case_id:
-        query["case_id"] = case_id
-    if status:
-        query["status"] = status
-    
-    # Get total count
-    total = collection.count_documents(query)
-    
-    # Get videos
-    cursor = collection.find(query).sort("upload_date", -1).skip(skip).limit(limit)
-    videos = []
-    for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        videos.append(doc)
-    
-    return {
-        "videos": videos,
-        "total": total,
-        "limit": limit,
-        "skip": skip
-    }
+    try:
+        db = _get_db()
+        
+        # Build base filter
+        query = {}
+        if case_id:
+            query["case_id"] = case_id
+        if status:
+            query["status"] = status
+        
+        # Collect all media files
+        media_files = []
+        
+        # 1. Query legacy video_evidence collection (all records are videos)
+        if not media_type or media_type == "video":
+            try:
+                video_collection = db[VideoEvidence.COLLECTION_NAME]
+                video_cursor = video_collection.find(query).sort("upload_date", -1)
+                for doc in video_cursor:
+                    serialized = serialize_doc(doc)
+                    serialized["collection_source"] = "video_evidence"
+                    serialized["media_type"] = "video"  # Set media_type for legacy records
+                    media_files.append(serialized)
+            except Exception as e:
+                print(f"Error querying video_evidence: {e}")
+        
+        # 2. Query new media_evidence collection
+        try:
+            media_collection = db[MediaEvidence.COLLECTION_NAME]
+            media_query = query.copy()
+            
+            # Filter by media_type if specified
+            if media_type:
+                if media_type == "images":
+                    media_query["media_type"] = "image"  # Use string constant instead
+                elif media_type == "video":
+                    media_query["media_type"] = "video"  # Use string constant instead
+            # If media_type is None, get all records (no additional filter)
+            
+            media_cursor = media_collection.find(media_query).sort("upload_date", -1)
+            for doc in media_cursor:
+                serialized = serialize_doc(doc)
+                serialized["collection_source"] = "media_evidence"
+                media_files.append(serialized)
+        except Exception as e:
+            print(f"Error querying media_evidence: {e}")
+        
+        # Sort combined results by upload_date (newest first)
+        # Handle missing upload_date by using a very old date as default
+        media_files.sort(key=lambda x: x.get("upload_date", "1970-01-01T00:00:00"), reverse=True)
+        
+        # Apply pagination to combined results
+        total = len(media_files)
+        paginated_files = media_files[skip:skip + limit] if skip + limit <= len(media_files) else media_files[skip:]
+        
+        return {
+            "videos": paginated_files,  # Keep "videos" key for backward compatibility
+            "media_files": paginated_files,  # Also provide more descriptive key
+            "total": total,
+            "limit": limit,
+            "skip": skip
+        }
+        
+    except Exception as e:
+        print(f"Error in list_videos: {e}")
+        # Return empty result instead of raising error
+        return {
+            "videos": [],
+            "media_files": [],
+            "total": 0,
+            "limit": limit,
+            "skip": skip,
+            "error": str(e)
+        }
 
 
 def delete_video(video_id: str) -> bool:
@@ -874,3 +944,232 @@ def get_processing_job(job_id: str) -> Optional[Dict[str, Any]]:
         return doc
     except Exception:
         return None
+
+
+# =============================================================================
+# New Media and Delete Services
+# =============================================================================
+
+async def fetch_media_from_gdrive(case_id: str, media_type: str) -> Dict[str, Any]:
+    """
+    Fetch media files from Google Drive for a specific case.
+    
+    Args:
+        case_id: Case ID to fetch media for
+        media_type: 'images' or 'video'
+        
+    Returns:
+        Dict containing case_id, media_type, and files list
+        
+    Raises:
+        ValueError: If case not found or invalid media_type
+        Exception: If Google Drive access fails
+    """
+    import asyncio
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Validate media_type
+    if media_type not in ['images', 'video']:
+        raise ValueError("media_type must be 'images' or 'video'")
+    
+    # Check if case exists
+    from search.services import get_case_by_id
+    case, case_error = get_case_by_id(case_id)
+    if case_error or not case:
+        raise ValueError("Case not found")
+    
+    # Get evidence records from MongoDB
+    db = _get_db()
+    collection = db[MediaEvidence.COLLECTION_NAME]
+    
+    # Build query
+    query = {
+        "case_id": case_id,
+        "storage_type": MediaEvidence.STORAGE_GDRIVE
+    }
+    
+    if media_type == "images":
+        query["media_type"] = MediaEvidence.MEDIA_IMAGE
+    else:  # video
+        query["media_type"] = MediaEvidence.MEDIA_VIDEO
+    
+    # Find matching records
+    evidence_records = list(collection.find(query).sort("upload_date", -1))
+    
+    if not evidence_records:
+        return {
+            "case_id": case_id,
+            "media_type": media_type,
+            "files": []
+        }
+    
+    # Initialize Google Drive service
+    def get_gdrive_service():
+        creds_path = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH')
+        if not creds_path:
+            raise ValueError("Google Drive service account not configured")
+            
+        creds = service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=['https://www.googleapis.com/auth/drive.readonly']
+        )
+        return build('drive', 'v3', credentials=creds)
+    
+    # Process each evidence record
+    async def process_evidence_record(record):
+        try:
+            gdrive_file_id = record.get('gdrive_file_id')
+            if not gdrive_file_id:
+                return None
+            
+            # Get file metadata from Google Drive
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as executor:
+                service = await loop.run_in_executor(executor, get_gdrive_service)
+                file_info = await loop.run_in_executor(
+                    executor,
+                    lambda: service.files().get(
+                        fileId=gdrive_file_id,
+                        fields='id,name,webViewLink,webContentLink,size,createdTime'
+                    ).execute()
+                )
+            
+            # Generate secure view/download URL
+            file_url = file_info.get('webViewLink') or f"https://drive.google.com/file/d/{gdrive_file_id}/view"
+            
+            return {
+                "file_id": gdrive_file_id,
+                "file_name": file_info.get('name', record.get('filename', 'unknown')),
+                "file_url": file_url,
+                "uploaded_at": record.get('upload_date', record.get('created_at'))
+            }
+            
+        except Exception as e:
+            # If we can't get file info from Drive, use what we have in DB
+            return {
+                "file_id": record.get('gdrive_file_id', ''),
+                "file_name": record.get('filename', 'unknown'),
+                "file_url": record.get('gdrive_url', ''),
+                "uploaded_at": record.get('upload_date', record.get('created_at'))
+            }
+    
+    # Process all records concurrently
+    tasks = [process_evidence_record(record) for record in evidence_records]
+    files = await asyncio.gather(*tasks)
+    
+    # Filter out None results
+    files = [f for f in files if f is not None]
+    
+    return {
+        "case_id": case_id,
+        "media_type": media_type,
+        "files": files
+    }
+
+
+async def delete_evidence_file(
+    file_id: Optional[str] = None,
+    evidence_id: Optional[str] = None,
+    case_id: str = ""
+) -> Dict[str, Any]:
+    """
+    Delete a single evidence file from Google Drive and MongoDB.
+    
+    Args:
+        file_id: Google Drive file ID (optional)
+        evidence_id: Evidence record ID (optional)
+        case_id: Case ID for validation
+        
+    Returns:
+        Dict containing success message and deleted file info
+        
+    Raises:
+        ValueError: If validation fails or file not found
+        Exception: If deletion fails
+    """
+    import asyncio
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Validate inputs
+    if not file_id and not evidence_id:
+        raise ValueError("Either file_id or evidence_id must be provided")
+    
+    if not case_id:
+        raise ValueError("case_id is required")
+    
+    # Find the evidence record
+    db = _get_db()
+    collection = db[MediaEvidence.COLLECTION_NAME]
+    
+    # Build query
+    query = {"case_id": case_id}
+    if evidence_id:
+        try:
+            query["_id"] = ObjectId(evidence_id)
+        except:
+            raise ValueError("Invalid evidence_id format")
+    elif file_id:
+        query["gdrive_file_id"] = file_id
+    
+    # Find the record
+    evidence_record = collection.find_one(query)
+    if not evidence_record:
+        raise ValueError("Evidence file not found")
+    
+    gdrive_file_id = evidence_record.get('gdrive_file_id')
+    if not gdrive_file_id:
+        raise ValueError("No Google Drive file ID found in record")
+    
+    # Delete from Google Drive
+    def delete_from_gdrive():
+        creds_path = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY_PATH')
+        if not creds_path:
+            raise ValueError("Google Drive service account not configured")
+            
+        creds = service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=['https://www.googleapis.com/auth/drive']
+        )
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Delete the file
+        service.files().delete(fileId=gdrive_file_id).execute()
+    
+    try:
+        # Delete from Google Drive
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            await loop.run_in_executor(executor, delete_from_gdrive)
+    except Exception as e:
+        # Continue even if Drive deletion fails (file might already be deleted)
+        print(f"Warning: Could not delete from Google Drive: {e}")
+    
+    # Delete from MongoDB
+    delete_result = collection.delete_one({"_id": evidence_record["_id"]})
+    if delete_result.deleted_count == 0:
+        raise ValueError("Failed to delete evidence record from database")
+    
+    # Update case evidence count if needed
+    try:
+        from search.models import Search
+        case_collection = db[Search.COLLECTION_NAME]
+        case_collection.update_one(
+            {"_id": ObjectId(case_id)},
+            {
+                "$pull": {"evidence_ids": str(evidence_record["_id"])},
+                "$inc": {"evidence_count": -1},
+                "$set": {"updated_at": datetime.utcnow()}
+            }
+        )
+    except Exception:
+        pass  # Don't fail if case update fails
+    
+    return {
+        "message": "File deleted successfully",
+        "case_id": case_id,
+        "deleted_file_id": gdrive_file_id
+    }
