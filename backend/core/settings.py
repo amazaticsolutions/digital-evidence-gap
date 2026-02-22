@@ -17,7 +17,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('SECRET_KEY', 'change-this-in-production')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development')
+FILE_UPLOAD_TEMP_DIR = os.path.join(BASE_DIR, 'tmp')
 
+# Auto-create the directory if it's missing
+if not os.path.exists(FILE_UPLOAD_TEMP_DIR):
+    os.makedirs(FILE_UPLOAD_TEMP_DIR)
 # Silence MongoDB AutoField warnings for Django's built-in apps
 # These are expected when using django-mongodb-backend with standard Django apps
 SILENCED_SYSTEM_CHECKS = [
@@ -26,7 +30,7 @@ SILENCED_SYSTEM_CHECKS = [
 
 # Allowed hosts
 # ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,https://disquietly-ungarnered-faustina.ngrok-free.dev').split(',')
-ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev']
+ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev', 'https://pgrgqtzj-8000.inc1.devtunnels.ms']
 
 # Application definition
 INSTALLED_APPS = [
@@ -231,10 +235,12 @@ CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,
 if DJANGO_ENV == 'development':
     CORS_ALLOWED_ORIGINS += [
         'http://localhost:3000',
+        'http://192.168.0.1:5173',
         'http://127.0.0.1:3000',
         'http://localhost:8080',
         'http://127.0.0.1:8080',
-        'https://disquietly-ungarnered-faustina.ngrok-free.dev'
+        'https://disquietly-ungarnered-faustina.ngrok-free.dev',
+        'https://pgrgqtzj-8000.inc1.devtunnels.ms'
     ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -292,6 +298,11 @@ LOGGING = {
         'django': {
             'handlers': ['console', 'file'],
             'level': os.getenv('LOG_LEVEL', 'DEBUG' if DJANGO_ENV == 'development' else 'INFO'),
+            'propagate': False,
+        },
+        'django.utils.autoreload': {
+            'handlers': ['console'],
+            'level': 'INFO',
             'propagate': False,
         },
         'apps': {

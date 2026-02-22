@@ -89,3 +89,26 @@ class CaseChatDetailSerializer(serializers.Serializer):
         child=serializers.DictField(),
         help_text="List of evidence files with paths"
     )
+
+
+class ChatbotRequestSerializer(serializers.Serializer):
+    """
+    Serializer for chatbot request.
+    """
+    user_id = serializers.CharField(
+        required=True,
+        help_text="User ID for conversation context"
+    )
+    message = serializers.CharField(
+        required=True,
+        help_text="User message to send to chatbot"
+    )
+
+
+class ChatbotResponseSerializer(serializers.Serializer):
+    """
+    Serializer for chatbot response.
+    """
+    user_message = serializers.CharField(help_text="Original user message")
+    ai_response = serializers.CharField(help_text="AI generated response")
+    timestamp = serializers.DateTimeField(help_text="Response timestamp")

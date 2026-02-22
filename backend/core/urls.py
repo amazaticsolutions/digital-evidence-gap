@@ -3,6 +3,7 @@ URL Configuration for digital_evidence_gap project.
 """
 from django.urls import path, include, re_path
 from django.conf import settings
+from django.http import JsonResponse
 from django.conf.urls.static import static
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -38,6 +39,16 @@ Authorization: Bearer <your_token>
 )
 
 urlpatterns = [
+    # Simple API root to avoid 404 on '/'
+    path('', lambda request: JsonResponse({
+        'message': 'Digital Evidence Gap API',
+        'endpoints': {
+            'users': '/api/users/',
+            'evidence': '/api/evidence/',
+            'search': '/api/search/',
+            'chat': '/api/chat/',
+        }
+    }), name='api-root'),
     path('api/users/', include('users.urls')),
     path('api/evidence/', include('evidence.urls')),
     path('api/search/', include('search.urls')),
