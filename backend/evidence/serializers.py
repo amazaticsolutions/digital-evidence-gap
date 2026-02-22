@@ -10,6 +10,85 @@ This module defines request/response serializers for:
 """
 
 from rest_framework import serializers
+from datetime import datetime
+
+
+class FetchMediaRequestSerializer(serializers.Serializer):
+    """
+    Serializer for fetching media from Google Drive.
+    """
+    case_id = serializers.CharField(
+        required=True,
+        max_length=100,
+        help_text="Case ID to fetch media for"
+    )
+    media_type = serializers.ChoiceField(
+        choices=['images', 'video'],
+        required=True,
+        help_text="Type of media to fetch"
+    )
+
+
+class MediaFileSerializer(serializers.Serializer):
+    """
+    Serializer for individual media file information.
+    """
+    file_id = serializers.CharField(help_text="Google Drive file ID")
+    file_name = serializers.CharField(help_text="Original file name")
+    file_url = serializers.URLField(help_text="Secure view/download URL")
+    uploaded_at = serializers.DateTimeField(help_text="Upload timestamp")
+
+
+class FetchMediaResponseSerializer(serializers.Serializer):
+    """
+    Serializer for media fetch response.
+    """
+    case_id = serializers.CharField(help_text="Case ID")
+    media_type = serializers.CharField(help_text="Media type")
+    files = serializers.ListField(
+        child=MediaFileSerializer(),
+        help_text="List of media files"
+    )
+
+
+class DeleteEvidenceRequestSerializer(serializers.Serializer):
+    """
+    Serializer for deleting evidence file.
+    """
+    file_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Google Drive file ID"
+    )
+    evidence_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Evidence record ID"
+    )
+    case_id = serializers.CharField(
+        required=True,
+        max_length=100,
+        help_text="Case ID for validation"
+    )
+
+    def validate(self, data):
+        """
+        Ensure at least one of file_id or evidence_id is provided.
+        """
+        if not data.get('file_id') and not data.get('evidence_id'):
+            raise serializers.ValidationError(
+                "Either file_id or evidence_id must be provided"
+            )
+        return data
+
+
+class DeleteEvidenceResponseSerializer(serializers.Serializer):
+    """
+    Serializer for delete evidence response.
+    """
+    message = serializers.CharField(help_text="Success message")
+    case_id = serializers.CharField(help_text="Case ID")
+    deleted_file_id = serializers.CharField(help_text="Deleted file ID")
 
 
 class VideoUploadSerializer(serializers.Serializer):
@@ -21,7 +100,7 @@ class VideoUploadSerializer(serializers.Serializer):
         cam_id: Camera identifier (required)
         gps_lat: GPS latitude (default: 0.0)
         gps_lng: GPS longitude (default: 0.0)
-        case_id: Associated case ID (optional)
+        case_id: Associated case ID (required)
     """
     video = serializers.FileField(
         required=True,
@@ -43,11 +122,9 @@ class VideoUploadSerializer(serializers.Serializer):
         help_text="GPS longitude of camera location"
     )
     case_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
+        required=True,
         max_length=100,
-        help_text="Associated case ID"
+        help_text="Associated case ID (required)"
     )
 
 
@@ -60,7 +137,7 @@ class GDriveLinkSerializer(serializers.Serializer):
         cam_id: Camera identifier (required)
         gps_lat: GPS latitude (default: 0.0)
         gps_lng: GPS longitude (default: 0.0)
-        case_id: Associated case ID (optional)
+        case_id: Associated case ID (required)
     """
     gdrive_url = serializers.CharField(
         required=True,
@@ -82,11 +159,9 @@ class GDriveLinkSerializer(serializers.Serializer):
         help_text="GPS longitude of camera location"
     )
     case_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
+        required=True,
         max_length=100,
-        help_text="Associated case ID"
+        help_text="Associated case ID (required)"
     )
 
 
@@ -99,7 +174,7 @@ class GDriveUploadSerializer(serializers.Serializer):
         cam_id: Camera identifier (required)
         gps_lat: GPS latitude (default: 0.0)
         gps_lng: GPS longitude (default: 0.0)
-        case_id: Associated case ID (optional)
+        case_id: Associated case ID (required)
         folder_id: Google Drive folder ID (optional, uses default)
     """
     files = serializers.ListField(
@@ -124,11 +199,9 @@ class GDriveUploadSerializer(serializers.Serializer):
         help_text="GPS longitude of camera location"
     )
     case_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
+        required=True,
         max_length=100,
-        help_text="Associated case ID"
+        help_text="Associated case ID (required)"
     )
     folder_id = serializers.CharField(
         required=False,
@@ -223,7 +296,7 @@ class GDriveBatchUploadSerializer(serializers.Serializer):
         cam_id: Camera identifier (required)
         gps_lat: GPS latitude (default: 0.0)
         gps_lng: GPS longitude (default: 0.0)
-        case_id: Associated case ID (optional)
+        case_id: Associated case ID (required)
     """
     files = serializers.ListField(
         child=GDriveFileItemSerializer(),
@@ -247,11 +320,9 @@ class GDriveBatchUploadSerializer(serializers.Serializer):
         help_text="GPS longitude of camera location"
     )
     case_id = serializers.CharField(
-        required=False,
-        allow_null=True,
-        allow_blank=True,
+        required=True,
         max_length=100,
-        help_text="Associated case ID"
+        help_text="Associated case ID (required)"
     )
 
 
@@ -368,12 +439,17 @@ class VideoListSerializer(serializers.Serializer):
 
 class VideoListQuerySerializer(serializers.Serializer):
     """
-    Serializer for video list query parameters.
+    Serializer for media list query parameters.
     """
     case_id = serializers.CharField(required=False, allow_null=True)
     status = serializers.ChoiceField(
         required=False,
         choices=['pending', 'processing', 'completed', 'failed']
+    )
+    media_type = serializers.ChoiceField(
+        required=False,
+        choices=['video', 'images'],
+        help_text="Filter by media type (video or images)"
     )
     limit = serializers.IntegerField(required=False, default=50, min_value=1, max_value=100)
     skip = serializers.IntegerField(required=False, default=0, min_value=0)

@@ -12,6 +12,7 @@ API Endpoints:
     POST   /api/evidence/process/             - Start RAG pipeline processing
     GET    /api/evidence/jobs/{id}/           - Get processing job status
 """
+import logging
 
 from rest_framework import status
 from rest_framework.views import APIView
@@ -36,6 +37,10 @@ from .serializers import (
     ProcessingJobSerializer,
     CaseFileUploadSerializer,
     CaseFileUploadResponseSerializer
+    FetchMediaRequestSerializer,
+    FetchMediaResponseSerializer,
+    DeleteEvidenceRequestSerializer,
+    DeleteEvidenceResponseSerializer,
 )
 from . import services
 
@@ -342,6 +347,9 @@ class GDriveBatchUploadView(APIView):
             )
 
 
+logger = logging.getLogger(__name__)
+
+
 class VideoListView(APIView):
     """
     List all video evidence with optional filters.
@@ -349,7 +357,7 @@ class VideoListView(APIView):
     permission_classes = [AllowAny]
     
     @swagger_auto_schema(
-        operation_description="List all video evidence",
+        operation_description="List all media evidence (videos and images)",
         manual_parameters=[
             openapi.Parameter(
                 'case_id',
@@ -365,6 +373,14 @@ class VideoListView(APIView):
                 required=False,
                 enum=['pending', 'processing', 'completed', 'failed'],
                 description='Filter by processing status'
+            ),
+            openapi.Parameter(
+                'media_type',
+                openapi.IN_QUERY,
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['video', 'images'],
+                description='Filter by media type (video or images)'
             ),
             openapi.Parameter(
                 'limit',
@@ -388,27 +404,37 @@ class VideoListView(APIView):
         tags=['Evidence']
     )
     def get(self, request):
-        """List videos with optional filters."""
-        query_serializer = VideoListQuerySerializer(data=request.query_params)
-        
-        if not query_serializer.is_valid():
-            return Response(
-                {"error": "Invalid query parameters", "details": query_serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        """List media files (videos and images) with optional filters."""
+        logger.info(f"VideoListView: Received request with query params: {request.query_params}")
         
         try:
+            query_serializer = VideoListQuerySerializer(data=request.query_params)
+            
+            if not query_serializer.is_valid():
+                logger.warning(f"VideoListView: Invalid query parameters. Errors: {query_serializer.errors}")
+                return Response(
+                    {"error": "Invalid query parameters", "details": query_serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            validated_data = query_serializer.validated_data
+            logger.info(f"VideoListView: Validated query data: {validated_data}")
+
             result = services.list_videos(
-                case_id=query_serializer.validated_data.get('case_id'),
-                status=query_serializer.validated_data.get('status'),
-                limit=query_serializer.validated_data.get('limit', 50),
-                skip=query_serializer.validated_data.get('skip', 0)
+                case_id=validated_data.get('case_id'),
+                status=validated_data.get('status'),
+                media_type=validated_data.get('media_type'),
+                limit=validated_data.get('limit', 50),
+                skip=validated_data.get('skip', 0)
             )
+            
+            logger.info(f"VideoListView: Service returned {len(result.get('media_files', []))} items.")
             return Response(result)
             
         except Exception as e:
+            logger.error(f"VideoListView: Unhandled exception: {e}", exc_info=True)
             return Response(
-                {"error": "Failed to list videos", "details": str(e)},
+                {"error": "Internal server error", "message": "Something went wrong. Please try again later.", "status_code": 500},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -621,6 +647,19 @@ class CaseFileUploadView(APIView):
             400: 'Validation error',
             401: 'Not authenticated',
             403: 'Permission denied',
+class FetchMediaView(APIView):
+    """
+    Fetch media files from Google Drive for a specific case.
+    """
+    parser_classes = [JSONParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Fetch media files from Google Drive for a case",
+        request_body=FetchMediaRequestSerializer,
+        responses={
+            200: FetchMediaResponseSerializer,
+            400: 'Validation error',
             404: 'Case not found',
             500: 'Server error'
         },
@@ -632,6 +671,8 @@ class CaseFileUploadView(APIView):
         from search import services as search_services
         
         serializer = CaseFileUploadSerializer(data=request.data)
+        """Fetch media files from Google Drive."""
+        serializer = FetchMediaRequestSerializer(data=request.data)
         
         if not serializer.is_valid():
             return Response(
@@ -720,5 +761,108 @@ class CaseFileUploadView(APIView):
         except Exception as e:
             return Response(
                 {"error": "Upload failed", "details": str(e)},
+        case_id = serializer.validated_data['case_id']
+        media_type = serializer.validated_data['media_type']
+        
+        try:
+            import asyncio
+            
+            # Handle async call in Django view
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                result = loop.run_until_complete(
+                    services.fetch_media_from_gdrive(case_id, media_type)
+                )
+            finally:
+                loop.close()
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            if "Case not found" in str(e):
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            else:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            return Response(
+                {"error": "Failed to fetch media files", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class DeleteEvidenceView(APIView):
+    """
+    Delete a single evidence file from Google Drive and database.
+    """
+    parser_classes = [JSONParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Delete evidence file from Google Drive and database",
+        request_body=DeleteEvidenceRequestSerializer,
+        responses={
+            200: DeleteEvidenceResponseSerializer,
+            400: 'Validation error',
+            404: 'File not found',
+            500: 'Server error'
+        },
+        tags=['Evidence']
+    )
+    def delete(self, request):
+        """Delete evidence file."""
+        serializer = DeleteEvidenceRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        file_id = serializer.validated_data.get('file_id')
+        evidence_id = serializer.validated_data.get('evidence_id')
+        case_id = serializer.validated_data['case_id']
+        
+        try:
+            import asyncio
+            
+            # Handle async call in Django view
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                result = loop.run_until_complete(
+                    services.delete_evidence_file(
+                        file_id=file_id,
+                        evidence_id=evidence_id,
+                        case_id=case_id
+                    )
+                )
+            finally:
+                loop.close()
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            if "not found" in str(e).lower():
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            else:
+                return Response(
+                    {"error": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            return Response(
+                {"error": "Failed to delete evidence file", "details": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
