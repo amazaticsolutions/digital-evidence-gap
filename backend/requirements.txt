@@ -100,7 +100,8 @@ torchreid==0.2.5                     # Cross-camera person re-identification
 gdown==5.1.0                         # Required for torchreid model downloads
 
 # LLM and Vision Model - Ollama
-ollama==0.1.7                        # Ollama client for LLaVA and llama3
+ollama==0.1.7
+openai==1.12.0                        # Ollama client for LLaVA and llama3
 
 # RAG Pipeline Orchestration
 langchain==0.1.11                    # LangChain core

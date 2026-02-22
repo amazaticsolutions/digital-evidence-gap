@@ -228,4 +228,5 @@ media/
 service-account-key.json
 *.key
 *.pem
+openai/
 
