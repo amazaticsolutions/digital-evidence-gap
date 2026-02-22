@@ -8,9 +8,12 @@ import os
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 import uuid
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from pymongo.errors import PyMongoError
 from bson import ObjectId
+import openai
 
 from .models import Chat, Message
 
@@ -23,8 +26,15 @@ def _get_db():
     """Get MongoDB database connection."""
     from pymongo import MongoClient
 
-    mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-    db_name = os.getenv("MONGO_DB_NAME", "digital_evidence_gap")
+    # Build MongoDB URI from individual settings like in Django settings
+    mongo_host = os.getenv("MONGODB_HOST", "localhost")
+    mongo_port = int(os.getenv("MONGODB_PORT", "27017"))
+    db_name = os.getenv("MONGODB_DATABASE", "digital_evidence_gap")
+    
+    # Use MONGO_URI if provided, otherwise build from individual settings
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        mongo_uri = f"mongodb://{mongo_host}:{mongo_port}/{db_name}"
 
     client = MongoClient(mongo_uri)
     return client[db_name]
@@ -262,3 +272,136 @@ def _format_message_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         "message_type": doc.get("message_type"),
         "created_at": doc.get("created_at"),
     }
+
+
+# =============================================================================
+# Chatbot Service
+# =============================================================================
+
+def _get_openai_client():
+    """Initialize OpenAI client."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+    
+    return openai.OpenAI(api_key=api_key)
+
+
+async def get_chatbot_response(user_message: str, conversation_history: List[Dict[str, str]] = None) -> str:
+    """
+    Get response from OpenAI API.
+    
+    Args:
+        user_message: User's message
+        conversation_history: List of previous messages for context
+        
+    Returns:
+        AI response string
+    """
+    try:
+        client = _get_openai_client()
+        
+        # Build messages for OpenAI API
+        messages = [
+            {
+                "role": "system", 
+                "content": "You are a helpful assistant for a digital evidence gap forensic video analysis system. You help users with questions about evidence management, video processing, and case analysis."
+            }
+        ]
+        
+        # Add conversation history
+        if conversation_history:
+            for msg in conversation_history[-10:]:  # Keep last 10 messages for context
+                messages.append({
+                    "role": "user" if msg["message_type"] == "user" else "assistant",
+                    "content": msg["content"]
+                })
+        
+        # Add current message
+        messages.append({"role": "user", "content": user_message})
+        
+        # Use ThreadPoolExecutor to run the sync OpenAI call
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            response = await loop.run_in_executor(
+                executor,
+                lambda: client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=messages,
+                    max_tokens=500,
+                    temperature=0.7
+                )
+            )
+        
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        return f"I apologize, but I'm experiencing technical difficulties. Please try again later. Error: {str(e)}"
+
+
+async def handle_chatbot_conversation(
+    user_id: str, 
+    user_message: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Handle a complete chatbot conversation.
+    
+    Args:
+        user_id: User ID
+        user_message: User's message
+        
+    Returns:
+        Tuple of (response_data, error_message)
+    """
+    try:
+        db = _get_db()
+        
+        # Get or create user's general chatbot conversation
+        chat_id = f"chatbot_{user_id}"
+        
+        # Get conversation history
+        messages_collection = db[Message.COLLECTION_NAME]
+        history = list(messages_collection.find(
+            {"chat_id": chat_id}
+        ).sort("created_at", -1).limit(20))
+        
+        # Reverse to get chronological order
+        history.reverse()
+        
+        # Get AI response
+        ai_response = await get_chatbot_response(user_message, history)
+        
+        # Store user message
+        user_msg_doc = Message.create_document(
+            chat_id=chat_id,
+            user_id=int(user_id) if user_id.isdigit() else 0,
+            content=user_message,
+            message_type=Message.TYPE_USER
+        )
+        print(f"DEBUG: Storing user message: {user_msg_doc}")
+        user_result = messages_collection.insert_one(user_msg_doc)
+        print(f"DEBUG: User message stored with ID: {user_result.inserted_id}")
+        
+        # Store AI response
+        ai_msg_doc = Message.create_document(
+            chat_id=chat_id,
+            user_id=0,  # System user
+            content=ai_response,
+            message_type=Message.TYPE_ASSISTANT
+        )
+        print(f"DEBUG: Storing AI message: {ai_msg_doc}")
+        ai_result = messages_collection.insert_one(ai_msg_doc)
+        print(f"DEBUG: AI message stored with ID: {ai_result.inserted_id}")
+        
+        # Return response data
+        timestamp = datetime.utcnow()
+        response_data = {
+            "user_message": user_message,
+            "ai_response": ai_response,
+            "timestamp": timestamp
+        }
+        
+        return response_data, None
+        
+    except Exception as e:
+        return None, f"Chatbot service error: {str(e)}"

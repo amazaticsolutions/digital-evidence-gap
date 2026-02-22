@@ -10,13 +10,18 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+import asyncio
 
 from .serializers import (
     SendMessageSerializer,
     MessageResponseSerializer,
     CaseChatDetailSerializer,
+    ChatbotRequestSerializer,
+    ChatbotResponseSerializer,
 )
 from . import services
 
@@ -146,3 +151,59 @@ class SendMessageView(APIView):
             )
 
         return Response(message, status=status.HTTP_201_CREATED)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ChatbotView(APIView):
+    """
+    AI Chatbot endpoint for general conversations.
+    """
+    permission_classes = []  # No authentication required for chatbot
+
+    @swagger_auto_schema(
+        operation_description="Send a message to the AI chatbot and get a response",
+        request_body=ChatbotRequestSerializer,
+        responses={
+            200: ChatbotResponseSerializer,
+            400: 'Validation error',
+            500: 'Internal server error',
+        },
+        tags=['Chatbot']
+    )
+    def post(self, request):
+        """Send message to AI chatbot."""
+        serializer = ChatbotRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user_id = serializer.validated_data['user_id']
+        user_message = serializer.validated_data['message']
+        
+        # Handle async chatbot conversation
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            response_data, error = loop.run_until_complete(
+                services.handle_chatbot_conversation(user_id, user_message)
+            )
+            
+            loop.close()
+            
+            if error:
+                return Response(
+                    {"error": error},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Chatbot service error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
