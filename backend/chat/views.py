@@ -63,7 +63,63 @@ class CaseChatDetailView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        return Response(details, status=status.HTTP_200_OK)
+        # Format response for frontend
+        case = details['case']
+        messages = details.get('messages', [])
+        evidence_files = details.get('evidence_files', [])
+        
+        # Create evidence map by filename for quick lookup
+        evidence_map = {}
+        for evidence in evidence_files:
+            filename = evidence.get('filename', '')
+            evidence_map[filename] = evidence
+        
+        # Format messages with role and media
+        formatted_messages = []
+        for msg in messages:
+            # Convert message_type to role
+            role = msg.get('message_type', 'user')
+            
+            # Format timestamp to ISO 8601
+            timestamp = msg.get('created_at')
+            if timestamp:
+                timestamp = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
+            
+            # Build media array (evidence files can be attached to messages)
+            media = []
+            # For now, we'll include all evidence files in the response
+            # In the future, we can link specific evidence to specific messages
+            
+            formatted_message = {
+                "id": msg.get('id'),
+                "role": role,
+                "content": msg.get('content', ''),
+                "timestamp": timestamp,
+                "media": media
+            }
+            formatted_messages.append(formatted_message)
+        
+        # Format response
+        response_data = {
+            "case_id": case.get('id'),
+            "case_name": case.get('title', ''),
+            "case_description": case.get('description', ''),
+            "total_evidence_files": len(evidence_files),
+            "evidence_files": [
+                {
+                    "type": "video" if ev.get('media_type') == 'video' else "image",
+                    "url": ev.get('file_path', ''),
+                    "description": ev.get('filename', ''),
+                    "filename": ev.get('filename', ''),
+                    "file_size": ev.get('file_size'),
+                    "upload_date": ev.get('upload_date').isoformat() if hasattr(ev.get('upload_date'), 'isoformat') else str(ev.get('upload_date', ''))
+                }
+                for ev in evidence_files
+            ],
+            "messages": formatted_messages
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class SendMessageView(APIView):

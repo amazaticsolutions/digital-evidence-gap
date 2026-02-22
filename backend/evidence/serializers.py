@@ -403,3 +403,236 @@ class ProcessingJobSerializer(serializers.Serializer):
     frames_processed = serializers.IntegerField(required=False)
     error_message = serializers.CharField(allow_null=True, required=False)
     message = serializers.CharField(required=False)
+
+
+# =============================================================================
+# RAG (Retrieval-Augmented Generation) Serializers
+# =============================================================================
+
+class RAGIngestSerializer(serializers.Serializer):
+    """
+    Serializer for RAG video ingestion.
+    
+    Request fields:
+        video_id: Video ID (optional, for reference)
+        gdrive_url: Google Drive URL (required if gdrive_file_id not provided)
+        gdrive_file_id: Google Drive file ID (required if gdrive_url not provided)
+        cam_id: Camera identifier (default: 'unknown')
+        gps_lat: GPS latitude (default: 0.0)
+        gps_lng: GPS longitude (default: 0.0)
+    """
+    video_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Video ID for reference"
+    )
+    gdrive_url = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Google Drive URL (e.g., https://drive.google.com/file/d/FILE_ID/view)"
+    )
+    gdrive_file_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Google Drive file ID"
+    )
+    cam_id = serializers.CharField(
+        required=False,
+        default='unknown',
+        max_length=100,
+        help_text="Camera identifier"
+    )
+    gps_lat = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS latitude"
+    )
+    gps_lng = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS longitude"
+    )
+
+
+class RAGQuerySerializer(serializers.Serializer):
+    """
+    Serializer for RAG query request.
+    
+    Request fields:
+        case_id: ID of the case (required)
+        query: Natural language query (required)
+        top_k: Maximum number of results to return (default: 10)
+        enable_reid: Enable person re-identification (default: False)
+        filters: Additional filters (optional)
+            - video_id: Filter by video ID
+            - cam_id: Filter by camera ID
+    """
+    case_id = serializers.CharField(
+        required=True,
+        help_text="ID of the case to query"
+    )
+    query = serializers.CharField(
+        required=True,
+        help_text="Natural language query (e.g., 'Show me all frames with a person in red')"
+    )
+    top_k = serializers.IntegerField(
+        required=False,
+        default=10,
+        min_value=1,
+        max_value=100,
+        help_text="Maximum number of results to return (1-100)"
+    )
+    enable_reid = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Enable person re-identification across cameras"
+    )
+    filters = serializers.DictField(
+        required=False,
+        default=dict,
+        help_text="Additional filters: video_id, cam_id"
+    )
+
+
+class RAGFrameResultSerializer(serializers.Serializer):
+    """
+    Serializer for individual frame result.
+    """
+    id = serializers.CharField(source='_id', required=False)
+    video_id = serializers.CharField(required=False, allow_null=True)
+    cam_id = serializers.CharField(required=False)
+    timestamp = serializers.FloatField(required=False)
+    score = serializers.FloatField(required=False)
+    relevant = serializers.BooleanField(required=False)
+    explanation = serializers.CharField(required=False, allow_null=True)
+    caption = serializers.CharField(required=False, allow_null=True)
+    gps_lat = serializers.FloatField(required=False, allow_null=True)
+    gps_lng = serializers.FloatField(required=False, allow_null=True)
+    reid_group = serializers.CharField(required=False, allow_null=True)
+    gdrive_url = serializers.CharField(required=False, allow_null=True)
+    confidence = serializers.FloatField(required=False, allow_null=True)
+
+
+class RAGQueryResponseSerializer(serializers.Serializer):
+    """
+    Serializer for RAG query response.
+    """
+    chat_id = serializers.CharField(help_text="Chat ID where conversation is stored")
+    user_message_id = serializers.CharField(help_text="ID of user's query message")
+    assistant_message_id = serializers.CharField(help_text="ID of assistant's response message")
+    query = serializers.CharField(help_text="Original query")
+    total_searched = serializers.IntegerField(help_text="Number of frames searched")
+    total_found = serializers.IntegerField(help_text="Number of relevant results found")
+    summary = serializers.CharField(help_text="LLM-generated summary of findings")
+    results = RAGFrameResultSerializer(many=True, help_text="Results sorted by relevance score")
+    timeline = RAGFrameResultSerializer(many=True, help_text="Results sorted by timestamp")
+    search_method = serializers.CharField(help_text="Search method used")
+    queries_used = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Query variations used in search"
+    )
+    reid_warning = serializers.CharField(required=False, allow_null=True)
+
+
+class RAGStatsResponseSerializer(serializers.Serializer):
+    """
+    Serializer for RAG system statistics.
+    """
+    total_videos = serializers.IntegerField(help_text="Total videos processed")
+    total_frames = serializers.IntegerField(help_text="Total frames extracted")
+    total_embeddings = serializers.IntegerField(help_text="Total embeddings created")
+    vector_index_exists = serializers.BooleanField(help_text="Whether vector index exists")
+    index_size_mb = serializers.FloatField(help_text="Index size in megabytes")
+    last_updated = serializers.CharField(
+        allow_null=True,
+        help_text="Last update timestamp (ISO format)"
+    )
+
+
+# =============================================================================
+# Case File Upload Serializers
+# =============================================================================
+
+class CaseFileUploadSerializer(serializers.Serializer):
+    """
+    Serializer for uploading files to a specific case.
+    
+    Request fields:
+        case_id: ID of the case (required)
+        files: List of video/image files to upload (required)
+        cam_id: Camera identifier (required)
+        gps_lat: GPS latitude (optional)
+        gps_lng: GPS longitude (optional)
+        folder_id: Google Drive folder ID (optional)
+    """
+    case_id = serializers.CharField(
+        required=True,
+        help_text="ID of the case to upload files to"
+    )
+    files = serializers.ListField(
+        child=serializers.FileField(),
+        required=True,
+        min_length=1,
+        help_text="List of video or image files to upload (supports multiple files)"
+    )
+    cam_id = serializers.CharField(
+        required=True,
+        max_length=100,
+        help_text="Camera identifier (e.g., 'cam1', 'lobby_camera')"
+    )
+    gps_lat = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS latitude of camera location"
+    )
+    gps_lng = serializers.FloatField(
+        required=False,
+        default=0.0,
+        help_text="GPS longitude of camera location"
+    )
+    folder_id = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=200,
+        help_text="Google Drive folder ID (optional)"
+    )
+
+
+class CaseFileUploadItemSerializer(serializers.Serializer):
+    """
+    Serializer for individual uploaded file information.
+    """
+    evidence_id = serializers.CharField(help_text="Evidence ID in database")
+    filename = serializers.CharField(help_text="Original filename")
+    file_size = serializers.IntegerField(help_text="File size in bytes")
+    media_type = serializers.CharField(help_text="Media type (video/image)")
+    gdrive_file_id = serializers.CharField(help_text="Google Drive file ID")
+    gdrive_url = serializers.CharField(help_text="Google Drive file URL")
+    cam_id = serializers.CharField(help_text="Camera identifier")
+    gps_lat = serializers.FloatField(help_text="GPS latitude")
+    gps_lng = serializers.FloatField(help_text="GPS longitude")
+    uploaded_at = serializers.DateTimeField(help_text="Upload timestamp")
+
+
+class CaseFileUploadResponseSerializer(serializers.Serializer):
+    """
+    Serializer for case file upload response.
+    """
+    success = serializers.BooleanField(help_text="Whether upload was successful")
+    case_id = serializers.CharField(help_text="Case ID")
+    case_title = serializers.CharField(help_text="Case title")
+    total_files = serializers.IntegerField(help_text="Total number of files uploaded")
+    successful_uploads = serializers.IntegerField(help_text="Number of successful uploads")
+    failed_uploads = serializers.IntegerField(help_text="Number of failed uploads")
+    uploaded_files = serializers.ListField(
+        child=CaseFileUploadItemSerializer(),
+        help_text="List of successfully uploaded files with details"
+    )
+    failed_files = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="List of failed uploads with error details"
+    )

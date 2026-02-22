@@ -30,7 +30,7 @@ SILENCED_SYSTEM_CHECKS = [
 
 # Allowed hosts
 # ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,https://disquietly-ungarnered-faustina.ngrok-free.dev').split(',')
-ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev', 'https://pgrgqtzj-8000.inc1.devtunnels.ms']
+ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '0.0.0.0', 'https://disquietly-ungarnered-faustina.ngrok-free.dev', 'https://inversive-jeff-semicircularly.ngrok-free.dev', 'https://pgrgqtzj-8000.inc1.devtunnels.ms']
 
 # Application definition
 INSTALLED_APPS = [
