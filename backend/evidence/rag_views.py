@@ -7,7 +7,6 @@ API Endpoints:
     GET    /api/evidence/rag/stats/   - Get RAG system statistics
 """
 
-import json
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -193,7 +192,8 @@ class RAGQueryView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            if case['user_id'] != request.user.id:
+            # Check ownership (convert to string for comparison since user_id from MongoDB can be string)
+            if str(case['user_id']) != str(request.user.id):
                 return Response(
                     {"error": "You don't have permission to query this case"},
                     status=status.HTTP_403_FORBIDDEN
@@ -281,19 +281,12 @@ class RAGQueryView(APIView):
             # Format for API response (remove binary data)
             api_results = format_results_for_display(results, include_images=False)
             
-            # Save assistant's response as a message
-            response_content = json.dumps({
-                "summary": api_results.get('summary', ''),
-                "total_found": api_results.get('total_found', 0),
-                "total_searched": api_results.get('total_searched', 0),
-                "result_count": len(api_results.get('results', [])),
-                "search_method": api_results.get('search_method', ''),
-            }, indent=2)
-            
+            # Save assistant's response with summary only in content
+            # Full results are returned in API response but only summary is saved to chat history
             assistant_message, asst_msg_error = chat_services.send_message(
                 chat_id=chat['id'],
                 user_id=request.user.id,  # System messages still need a user_id
-                content=response_content,
+                content=api_results.get('summary', ''),
                 message_type='assistant'
             )
             

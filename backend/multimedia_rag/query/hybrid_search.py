@@ -98,6 +98,7 @@ def keyword_search(
         db = get_db()
         col = db[config.COLLECTION_FRAME_EMBEDDINGS]
 
+        # Try text search first
         cursor = col.find(
             {"$text": {"$search": kw}},
             {
@@ -105,6 +106,7 @@ def keyword_search(
                 "caption_brief": 1,
                 "caption_detailed": 1,
                 "caption_regional": 1,
+                "caption": 1,  # Also include unified caption field
                 "cam_id": 1,
                 "timestamp": 1,
                 "frame_image": 1,
@@ -114,9 +116,36 @@ def keyword_search(
         ).sort([("score", {"$meta": "textScore"})]).limit(top_k)
 
         results = list(cursor)
+        
+        # If text search returns no results, try regex search on caption field
+        if not results:
+            _log("Text search returned 0 results, trying regex fallback...")
+            # Split keywords and search for any match
+            keywords = kw.split()
+            regex_pattern = "|".join(keywords)
+            cursor = col.find(
+                {"caption": {"$regex": regex_pattern, "$options": "i"}},
+                {
+                    "_id": 1,
+                    "caption_brief": 1,
+                    "caption_detailed": 1,
+                    "caption_regional": 1,
+                    "caption": 1,
+                    "cam_id": 1,
+                    "timestamp": 1,
+                    "frame_image": 1,
+                    "gdrive_url": 1,
+                },
+            ).limit(top_k)
+            results = list(cursor)
+            # Assign a default score for regex matches
+            for r in results:
+                r["score"] = 0.7  # Moderate confidence for regex matches
+                r["matched_query"] = kw
+            _log(f"Regex fallback returned {len(results)} results")
 
         # Normalise textScore into a rough 0-1 range
-        if results:
+        if results and results[0].get("score", 0) > 1:
             max_score = max(r.get("score", 1) for r in results) or 1
             for r in results:
                 r["score"] = round(r.get("score", 0) / max_score, 4)

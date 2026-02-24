@@ -56,8 +56,10 @@ class CaseChatDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Check ownership
-        if details['case']['user_id'] != request.user.id:
+        # Check ownership (convert to string for comparison since user_id from MongoDB can be string)
+        case_user_id = str(details['case']['user_id'])
+        request_user_id = str(request.user.id)
+        if case_user_id != request_user_id:
             return Response(
                 {"error": "You don't have permission to view this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -65,39 +67,8 @@ class CaseChatDetailView(APIView):
 
         # Format response for frontend
         case = details['case']
-        messages = details.get('messages', [])
+        messages = details.get('messages', [])  # Already formatted by service
         evidence_files = details.get('evidence_files', [])
-        
-        # Create evidence map by filename for quick lookup
-        evidence_map = {}
-        for evidence in evidence_files:
-            filename = evidence.get('filename', '')
-            evidence_map[filename] = evidence
-        
-        # Format messages with role and media
-        formatted_messages = []
-        for msg in messages:
-            # Convert message_type to role
-            role = msg.get('message_type', 'user')
-            
-            # Format timestamp to ISO 8601
-            timestamp = msg.get('created_at')
-            if timestamp:
-                timestamp = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
-            
-            # Build media array (evidence files can be attached to messages)
-            media = []
-            # For now, we'll include all evidence files in the response
-            # In the future, we can link specific evidence to specific messages
-            
-            formatted_message = {
-                "id": msg.get('id'),
-                "role": role,
-                "content": msg.get('content', ''),
-                "timestamp": timestamp,
-                "media": media
-            }
-            formatted_messages.append(formatted_message)
         
         # Format response
         response_data = {
@@ -116,7 +87,7 @@ class CaseChatDetailView(APIView):
                 }
                 for ev in evidence_files
             ],
-            "messages": formatted_messages
+            "messages": messages  # Use messages as-is (already formatted with role and timestamp)
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -165,7 +136,8 @@ class SendMessageView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        if case['user_id'] != request.user.id:
+        # Check ownership (convert to string for comparison since user_id from MongoDB can be string)
+        if str(case['user_id']) != str(request.user.id):
             return Response(
                 {"error": "You don't have permission to send messages to this case"},
                 status=status.HTTP_403_FORBIDDEN
@@ -192,12 +164,19 @@ class SendMessageView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
-        # Send message
+        # Send message with media attachments
+        media = serializer.validated_data.get('media', [])
+        metadata = {'media': media} if media else None
+        
+        # Support both 'role' (new) and 'message_type' (deprecated) for backward compatibility
+        role = serializer.validated_data.get('role') or serializer.validated_data.get('message_type', 'user')
+        
         message, message_error = services.send_message(
             chat_id=chat['id'],
             user_id=request.user.id,
             content=serializer.validated_data['content'],
-            message_type=serializer.validated_data.get('message_type', 'user')
+            message_type=role,  # Stored internally as message_type
+            metadata=metadata
         )
 
         if message_error:

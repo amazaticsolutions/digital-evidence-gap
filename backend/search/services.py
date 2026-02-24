@@ -178,14 +178,9 @@ def get_case_with_evidence(case_id: str) -> Tuple[Optional[Dict[str, Any]], Opti
         
         case = _format_case_document(case_doc)
         
-        # Get evidence details
-        evidence_ids = case_doc.get("evidence_ids", [])
-        if evidence_ids:
-            evidence_object_ids = [ObjectId(eid) for eid in evidence_ids if ObjectId.is_valid(eid)]
-            evidence_docs = list(evidence_collection.find({"_id": {"$in": evidence_object_ids}}))
-            case["evidence"] = [_format_evidence_document(doc) for doc in evidence_docs]
-        else:
-            case["evidence"] = []
+        # Get evidence details by case_id (more reliable than evidence_ids array)
+        evidence_docs = list(evidence_collection.find({"case_id": case_id}))
+        case["evidence"] = [_format_evidence_document(doc) for doc in evidence_docs]
         
         return case, None
         

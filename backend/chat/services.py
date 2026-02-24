@@ -13,7 +13,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 from pymongo.errors import PyMongoError
 from bson import ObjectId
-import openai
+
+# Optional import for chatbot functionality
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 from .models import Chat, Message
 
@@ -252,25 +258,61 @@ def get_case_chat_details(case_id: str) -> Tuple[Optional[Dict[str, Any]], Optio
 
 def _format_chat_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Format a chat document for API response."""
+    # Format timestamps to ISO 8601
+    created_at = doc.get("created_at")
+    created_timestamp = created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at) if created_at else None
+    
+    updated_at = doc.get("updated_at")
+    updated_timestamp = updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at) if updated_at else None
+    
+    # Convert ObjectId fields to strings
+    case_id = doc.get("case_id")
+    if isinstance(case_id, ObjectId):
+        case_id = str(case_id)
+    
+    user_id = doc.get("user_id")
+    if isinstance(user_id, ObjectId):
+        user_id = str(user_id)
+    elif user_id is not None:
+        user_id = str(user_id)
+    
     return {
         "id": str(doc["_id"]),
-        "case_id": doc.get("case_id"),
-        "user_id": doc.get("user_id"),
+        "case_id": case_id,
+        "user_id": user_id,
         "title": doc.get("title"),
-        "created_at": doc.get("created_at"),
-        "updated_at": doc.get("updated_at"),
+        "created_at": created_timestamp,
+        "updated_at": updated_timestamp,
     }
 
 
 def _format_message_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Format a message document for API response."""
+    metadata = doc.get("metadata", {})
+    media = metadata.get("media", []) if isinstance(metadata, dict) else []
+    
+    # Format timestamp to ISO 8601
+    created_at = doc.get("created_at")
+    if created_at:
+        timestamp = created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at)
+    else:
+        timestamp = None
+    
+    # Convert user_id to string (in case it's an ObjectId or int)
+    user_id = doc.get("user_id")
+    if isinstance(user_id, ObjectId):
+        user_id = str(user_id)
+    elif user_id is not None:
+        user_id = str(user_id)
+    
     return {
         "id": str(doc["_id"]),
-        "chat_id": doc.get("chat_id"),
-        "user_id": doc.get("user_id"),
+        "chat_id": str(doc.get("chat_id")) if doc.get("chat_id") else None,
+        "user_id": user_id,
         "content": doc.get("content"),
-        "message_type": doc.get("message_type"),
-        "created_at": doc.get("created_at"),
+        "role": doc.get("message_type", "user"),  # Use 'role' for frontend consistency
+        "timestamp": timestamp,  # ISO 8601 formatted timestamp or None
+        "media": media
     }
 
 
@@ -280,6 +322,9 @@ def _format_message_document(doc: Dict[str, Any]) -> Dict[str, Any]:
 
 def _get_openai_client():
     """Initialize OpenAI client."""
+    if not OPENAI_AVAILABLE:
+        raise ValueError("OpenAI module is not installed. Install with: pip install openai")
+    
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")

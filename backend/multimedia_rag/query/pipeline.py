@@ -62,26 +62,32 @@ def _validate_query(user_query: str) -> bool:
     Returns:
         bool: True if the query is considered specific enough.
     """
-    prompt = (
-        "You are a forensic video search assistant. Decide whether the "
-        "following query is specific enough to search surveillance footage.\n"
-        "A good query mentions at least one of: an object, a person "
-        "description, an action, or a time reference.\n"
-        f'Query: "{user_query}"\n'
-        "Respond ONLY with YES or NO."
-    )
-    try:
-        client = ollama.Client(host=config.OLLAMA_BASE_URL)
-        resp = client.generate(
-            model=config.LLM_MODEL,
-            prompt=prompt,
-            options={"temperature": 0.0, "num_predict": 5},
-        )
-        answer = resp.get("response", "").strip().upper()
-        return answer.startswith("YES")
-    except Exception as e:
-        _log(f"WARNING: Query validation LLM call failed ({e}); accepting query.")
-        return True
+    # Validation disabled - accept all queries
+    # This allows users to search freely without LLM validation restrictions
+    _log(f"Query validation bypassed (accepting all queries)")
+    return True
+    
+    # Original validation logic (commented out)
+    # prompt = (
+    #     "You are a forensic video search assistant. Decide whether the "
+    #     "following query is specific enough to search surveillance footage.\n"
+    #     "A good query mentions at least one of: an object, a person "
+    #     "description, an action, or a time reference.\n"
+    #     f'Query: "{user_query}"\n'
+    #     "Respond ONLY with YES or NO."
+    # )
+    # try:
+    #     client = ollama.Client(host=config.OLLAMA_BASE_URL)
+    #     resp = client.generate(
+    #         model=config.LLM_MODEL,
+    #         prompt=prompt,
+    #         options={"temperature": 0.0, "num_predict": 5},
+    #     )
+    #     answer = resp.get("response", "").strip().upper()
+    #     return answer.startswith("YES")
+    # except Exception as e:
+    #     _log(f"WARNING: Query validation LLM call failed ({e}); accepting query.")
+    #     return True
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ API Endpoints:
 """
 import logging
 
+from bson import ObjectId
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -36,7 +37,7 @@ from .serializers import (
     ProcessingStartSerializer,
     ProcessingJobSerializer,
     CaseFileUploadSerializer,
-    CaseFileUploadResponseSerializer
+    CaseFileUploadResponseSerializer,
     FetchMediaRequestSerializer,
     FetchMediaResponseSerializer,
     DeleteEvidenceRequestSerializer,
@@ -449,6 +450,7 @@ class VideoDetailView(APIView):
         operation_description="Get video evidence details",
         responses={
             200: VideoDetailSerializer,
+            400: 'Invalid video ID',
             404: 'Video not found',
             500: 'Server error'
         },
@@ -456,6 +458,13 @@ class VideoDetailView(APIView):
     )
     def get(self, request, video_id):
         """Get video details by ID."""
+        # Validate video_id format
+        if not ObjectId.is_valid(video_id):
+            return Response(
+                {"error": "Invalid video ID", "details": f"'{video_id}' is not a valid ObjectId"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
             video = services.get_video(video_id)
             
@@ -477,6 +486,7 @@ class VideoDetailView(APIView):
         operation_description="Delete video evidence",
         responses={
             204: 'Video deleted',
+            400: 'Invalid video ID',
             404: 'Video not found',
             500: 'Server error'
         },
@@ -484,6 +494,13 @@ class VideoDetailView(APIView):
     )
     def delete(self, request, video_id):
         """Delete video by ID."""
+        # Validate video_id format
+        if not ObjectId.is_valid(video_id):
+            return Response(
+                {"error": "Invalid video ID", "details": f"'{video_id}' is not a valid ObjectId"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
             deleted = services.delete_video(video_id)
             
@@ -647,21 +664,6 @@ class CaseFileUploadView(APIView):
             400: 'Validation error',
             401: 'Not authenticated',
             403: 'Permission denied',
-class FetchMediaView(APIView):
-    """
-    Fetch media files from Google Drive for a specific case.
-    """
-    parser_classes = [JSONParser]
-    permission_classes = [IsAuthenticated]
-    
-    @swagger_auto_schema(
-        operation_description="Fetch media files from Google Drive for a case",
-        request_body=FetchMediaRequestSerializer,
-        responses={
-            200: FetchMediaResponseSerializer,
-            400: 'Validation error',
-            404: 'Case not found',
-            500: 'Server error'
         },
         tags=['Evidence']
     )
@@ -671,8 +673,6 @@ class FetchMediaView(APIView):
         from search import services as search_services
         
         serializer = CaseFileUploadSerializer(data=request.data)
-        """Fetch media files from Google Drive."""
-        serializer = FetchMediaRequestSerializer(data=request.data)
         
         if not serializer.is_valid():
             return Response(
@@ -696,7 +696,8 @@ class FetchMediaView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
-            if case['user_id'] != request.user.id:
+            # Check ownership (convert to string for comparison since user_id from MongoDB can be string)
+            if str(case['user_id']) != str(request.user.id):
                 return Response(
                     {"error": "You don't have permission to upload files to this case"},
                     status=status.HTTP_403_FORBIDDEN
@@ -761,6 +762,38 @@ class FetchMediaView(APIView):
         except Exception as e:
             return Response(
                 {"error": "Upload failed", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class FetchMediaView(APIView):
+    """
+    Fetch media files from Google Drive for a specific case.
+    """
+    parser_classes = [JSONParser]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Fetch media files from Google Drive for a case",
+        request_body=FetchMediaRequestSerializer,
+        responses={
+            200: FetchMediaResponseSerializer,
+            400: 'Validation error',
+            404: 'Case not found',
+            500: 'Server error'
+        },
+        tags=['Evidence']
+    )
+    def post(self, request):
+        """Fetch media files from Google Drive."""
+        serializer = FetchMediaRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": "Validation failed", "details": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         case_id = serializer.validated_data['case_id']
         media_type = serializer.validated_data['media_type']
         

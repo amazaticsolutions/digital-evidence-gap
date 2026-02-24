@@ -38,29 +38,45 @@ class ChatResponseSerializer(serializers.Serializer):
 
 class SendMessageSerializer(serializers.Serializer):
     """
-    Serializer for sending a message.
+    Serializer for sending a message with optional media attachments.
     """
     content = serializers.CharField(
         required=True,
         help_text="Message content"
     )
-    message_type = serializers.ChoiceField(
+    role = serializers.ChoiceField(
         choices=['user', 'assistant', 'system'],
         default='user',
-        help_text="Type of message"
+        required=False,
+        help_text="Message role (use this for new code)"
+    )
+    message_type = serializers.ChoiceField(
+        choices=['user', 'assistant', 'system'],
+        required=False,
+        help_text="Deprecated: Use 'role' instead"
+    )
+    media = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+        help_text="List of media attachments (Google Drive URLs, images, videos)"
     )
 
 
 class MessageResponseSerializer(serializers.Serializer):
     """
-    Serializer for message response data.
+    Serializer for message response data (for POST /message/ endpoint).
     """
     id = serializers.CharField(help_text="Message ID")
     chat_id = serializers.CharField(help_text="Parent chat ID")
     user_id = serializers.IntegerField(help_text="ID of user who sent the message")
     content = serializers.CharField(help_text="Message content")
-    message_type = serializers.CharField(help_text="Type of message")
-    created_at = serializers.DateTimeField(help_text="Creation date and time")
+    role = serializers.CharField(help_text="Message role: 'user', 'assistant', or 'system'")
+    timestamp = serializers.CharField(help_text="Message timestamp in ISO 8601 format")
+    media = serializers.ListField(
+        child=serializers.DictField(),
+        help_text="List of media attachments"
+    )
 
 
 class ChatWithMessagesSerializer(serializers.Serializer):

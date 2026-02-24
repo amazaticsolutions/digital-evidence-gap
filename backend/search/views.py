@@ -41,7 +41,7 @@ class CaseListCreateView(APIView):
     List all cases for current user or create a new case.
     """
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     @swagger_auto_schema(
         operation_description="Get all cases for the current user",

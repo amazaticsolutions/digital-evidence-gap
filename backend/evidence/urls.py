@@ -27,14 +27,14 @@ from .views import (
     VideoDetailView,
     ProcessingStartView,
     ProcessingJobView,
-    CaseFileUploadView
+    CaseFileUploadView,
+    FetchMediaView,
+    DeleteEvidenceView,
 )
 from .rag_views import (
     RAGIngestView,
     RAGQueryView,
-    RAGStatsView
-    FetchMediaView,
-    DeleteEvidenceView,
+    RAGStatsView,
 )
 
 app_name = 'evidence'

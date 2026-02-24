@@ -126,6 +126,70 @@ def _run_florence_task(pil_image: Image.Image, task_token: str) -> str:
     return str(parsed).strip()
 
 
+def _generate_caption_ollama(image_bytes: bytes) -> Dict[str, str]:
+    """
+    Generate captions using Ollama's LLaVA model as a fallback.
+
+    Args:
+        image_bytes: JPEG-encoded image as bytes.
+
+    Returns:
+        Dict[str, str]: Dictionary with brief, detailed, and regional captions.
+    """
+    import base64
+    import ollama
+    from multimedia_rag import config
+
+    try:
+        _log("Using Ollama LLaVA for captioning (Florence-2 not available)")
+        
+        # Encode image to base64
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        client = ollama.Client(host=config.OLLAMA_BASE_URL)
+        
+        # Generate brief caption
+        brief_resp = client.generate(
+            model=config.LLAVA_MODEL,
+            prompt="Describe this image in one short sentence (max 20 words). Focus on the main subject and action.",
+            images=[image_b64],
+            options={"temperature": 0.3, "num_predict": 50},
+        )
+        brief = brief_resp.get("response", "").strip()
+        
+        # Generate detailed caption
+        detailed_resp = client.generate(
+            model=config.LLAVA_MODEL,
+            prompt="Describe this image in detail. Include: people present, their appearance and clothing, actions, objects, and setting. Be specific and factual.",
+            images=[image_b64],
+            options={"temperature": 0.3, "num_predict": 200},
+        )
+        detailed = detailed_resp.get("response", "").strip()
+        
+        # Generate regional caption (spatial description)
+        regional_resp = client.generate(
+            model=config.LLAVA_MODEL,
+            prompt="Describe the spatial layout of this image. What is in the foreground, middle ground, and background? Describe left to right positioning of elements.",
+            images=[image_b64],
+            options={"temperature": 0.3, "num_predict": 150},
+        )
+        regional = regional_resp.get("response", "").strip()
+        
+        return {
+            "brief": brief if brief else "[empty]",
+            "detailed": detailed if detailed else "[empty]",
+            "regional": regional if regional else "[empty]",
+        }
+        
+    except Exception as e:
+        _log(f"ERROR: Ollama LLaVA captioning failed: {e}")
+        return {
+            "brief": f"[LLaVA error: {str(e)[:60]}]",
+            "detailed": f"[LLaVA error: {str(e)[:60]}]",
+            "regional": f"[LLaVA error: {str(e)[:60]}]",
+        }
+
+
 def generate_caption(image_bytes: bytes) -> Dict[str, str]:
     """
     Generate three captions for a video frame using Florence-2.
@@ -160,12 +224,8 @@ def generate_caption(image_bytes: bytes) -> Dict[str, str]:
         raise ValueError(f"Could not decode image bytes: {e}")
 
     if not _FLORENCE_LOADED:
-        _log("WARNING: Florence-2 not loaded — returning placeholder captions")
-        return {
-            "brief": "[Florence-2 unavailable — no caption]",
-            "detailed": "[Florence-2 unavailable — no caption]",
-            "regional": "[Florence-2 unavailable — no caption]",
-        }
+        # Fallback to Ollama LLaVA model for captioning
+        return _generate_caption_ollama(image_bytes)
 
     try:
         brief = _run_florence_task(pil_image, _TASK_BRIEF)
